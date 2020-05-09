@@ -17,21 +17,33 @@ static simulated function XComGameState ConcealedShotgunCharge_BuildGameState(XC
     
     //    Cast the Game State Context to XComGameStateContext_Ability, because this is ability activation.
     AbilityContext = XComGameStateContext_Ability(Context);    
+
+	NewGameState = `XCOMHISTORY.CreateNewGameState(true, Context);
     
     //    Prep the Unit State of the unit activating the ability for modification.
     UnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', AbilityContext.InputContext.SourceObject.ObjectID));
-    
-	fUnitDetectionModifier = UnitState.GetCurrentStat(eStat_DetectionModifier);
-	UnitState.SetCurrentStat(eStat_DetectionModifier, 0);
 
+	//	Conceal the unit, if not concealed already.
 	if (!UnitState.IsConcealed())
 	{
 		UnitState.SetIndividualConcealment(true, NewGameState);	
 	}
+    
+	//	Record the Unit's detection modifier.
+	fUnitDetectionModifier = UnitState.GetCurrentStat(eStat_DetectionModifier);
 
-    //Build the new game state frame
-    NewGameState = TypicalMoveEndAbility_BuildGameState(Context);
+	//	Temporarily set it to zero so the unit can approach the enemy target without breaking concealment.
+	UnitState.SetCurrentStat(eStat_DetectionModifier, 0);
 
+	// Perform the movement portion of the ability
+	//Do not apply costs at this time.
+	class'X2Ability_DefaultAbilitySet'.static.MoveAbility_FillOutGameState(NewGameState, false); 
+
+	//	Build the "fire" animation for the shotgun shot.
+	//	Ability Costs applied here.
+	TypicalAbility_FillOutGameState(NewGameState); 
+
+	//	Restore detection modifier.
 	UnitState.SetCurrentStat(eStat_DetectionModifier, fUnitDetectionModifier);
    
     //Return the game state we have created
@@ -50,6 +62,7 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_stealth";
 
 	// Change Hit Calc to Standard aim to count for shotgun fire and not Melee
+	//	TODO: Change Hit Calc so that the ability Hit chance does not get penalized by range penalty, and the RPGO Damage Penalty for range doesn't apply to damage preview.
 	Template.AbilityToHitCalc = default.SimpleStandardAim;
 	Template.AbilityToHitOwnerOnMissCalc = default.SimpleStandardAim;
 
@@ -92,7 +105,9 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	Template.AddTargetEffect(KnockbackEffect);
 
 	Template.AbilityConfirmSound = "TacticalUI_Activate_Ability_Run_N_Gun";
-	Template.ActivationSpeech = 'RunAndGun';
+	
+	//	Removed to avoid clashing "Entering concealment" speech.
+	Template.ActivationSpeech = '';
 
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
 
