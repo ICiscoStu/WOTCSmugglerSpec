@@ -1,4 +1,3 @@
-// This is an Unreal Script
 class X2Ability_SmugglerShotgun extends X2Ability;
 
 static function array<X2DataTemplate> CreateTemplates()
@@ -11,13 +10,11 @@ static function array<X2DataTemplate> CreateTemplates()
 
 static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName = 'CS_Shotgun_Charge_Attack')
 {
-	local X2AbilityTemplate          Template;
-	local X2AbilityCost_Ammo         AmmoCost;
-	local X2AbilityCost_ActionPoints ActionPointCost;
-	local X2Effect_ApplyWeaponDamage WeaponDamageEffect;
-
-	// This will be neede for stealth
-	local X2Effect_RangerStealth  StealthEffect;
+	local X2AbilityTemplate						Template;
+	local X2AbilityCost_Ammo					AmmoCost;
+	local X2AbilityCost_QuickdrawActionPoints 	ActionPointCost;
+	local X2Effect_ApplyWeaponDamage			WeaponDamageEffect;
+	local X2Effect_Knockback					KnockbackEffect;
 
 	// Add Slice Ability
 	Template = class'X2Ability_RangerAbilitySet'.static.AddSwordSliceAbility(TemplateName);
@@ -30,12 +27,16 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	// Manually stop moving since shotgun has no start/stop fire animation
 	Template.bSkipMoveStop = false;
 
+	// Weapon Upgrade Compatibility
+	// Flag that permits action to become 'free action' via 'Hair Trigger' or similar upgrade / effects
+	Template.bAllowFreeFireWeaponUpgrade = true;                                            
+
 	// Ammo setup
 	AmmoCost = new class'X2AbilityCost_Ammo';	
 	AmmoCost.iAmmo = 1;
 	Template.AbilityCosts.AddItem(AmmoCost);
 	Template.bAllowAmmoEffects = true;
-	Template.bUseAmmoAsChargesForHUD = true;
+	Template.bUseAmmoAsChargesForHUD = true;	//	Use "charges" interface to display ammo.
 
 	// Action points setup
 	ActionPointCost = new class'X2AbilityCost_QuickdrawActionPoints';
@@ -44,9 +45,14 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	ActionPointCost.DoNotConsumeAllEffects.AddItem('SawedOffSingle_DoNotConsumeAllActionsEffect');
 	Template.AbilityCosts.AddItem(ActionPointCost);	
 
-	// Damage Effect
-	WeaponDamageEffect = new class'X2Effect_ApplyWeaponDamage';
-	Template.AddTargetEffect(WeaponDamageEffect);
+	KnockbackEffect = new class'X2Effect_Knockback';
+	KnockbackEffect.KnockbackDistance = 3;
+	Template.AddTargetEffect(KnockbackEffect);
+
+	Template.AbilityConfirmSound = "TacticalUI_Activate_Ability_Run_N_Gun";
+	Template.ActivationSpeech = 'RunAndGun';
+
+	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
 
 	return Template;
 }
