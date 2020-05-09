@@ -8,12 +8,41 @@ static function array<X2DataTemplate> CreateTemplates()
 	return Templates;
 }
 
+static simulated function XComGameState ConcealedShotgunCharge_BuildGameState(XComGameStateContext Context)
+{
+    local XComGameState                NewGameState;
+	local XComGameStateContext_Ability AbilityContext;
+	local XComGameState_Unit           UnitState;
+	local float                        fUnitDetectionModifier;
+    
+    //    Cast the Game State Context to XComGameStateContext_Ability, because this is ability activation.
+    AbilityContext = XComGameStateContext_Ability(Context);    
+    
+    //    Prep the Unit State of the unit activating the ability for modification.
+    UnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', AbilityContext.InputContext.SourceObject.ObjectID));
+    
+	fUnitDetectionModifier = UnitState.GetCurrentStat(eStat_DetectionModifier);
+	UnitState.SetCurrentStat(eStat_DetectionModifier, 0);
+
+	if (!UnitState.IsConcealed())
+	{
+		UnitState.SetIndividualConcealment(true, NewGameState);	
+	}
+
+    //Build the new game state frame
+    NewGameState = TypicalMoveEndAbility_BuildGameState(Context);
+
+	UnitState.SetCurrentStat(eStat_DetectionModifier, fUnitDetectionModifier);
+   
+    //Return the game state we have created
+    return NewGameState;
+}
+
 static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName = 'CS_Shotgun_Charge_Attack')
 {
 	local X2AbilityTemplate						Template;
 	local X2AbilityCost_Ammo					AmmoCost;
 	local X2AbilityCost_QuickdrawActionPoints 	ActionPointCost;
-	local X2Effect_ApplyWeaponDamage			WeaponDamageEffect;
 	local X2Effect_Knockback					KnockbackEffect;
 
 	// Add Slice Ability
@@ -45,6 +74,19 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	ActionPointCost.DoNotConsumeAllEffects.AddItem('SawedOffSingle_DoNotConsumeAllActionsEffect');
 	Template.AbilityCosts.AddItem(ActionPointCost);	
 
+    Template.AbilityTargetEffects.Length = 0;
+
+    //  Put holo target effect first because if the target dies from this shot, it will be too late to notify the effect.
+    Template.AddTargetEffect(class'X2Ability_GrenadierAbilitySet'.static.HoloTargetEffect());
+
+    //  Various Soldier ability specific effects - effects check for the ability before applying  
+	// Same as ApplyWeaponDamage, but also shreds target armor if the soldier has the Shredder ability  
+    Template.AddTargetEffect(class'X2Ability_GrenadierAbilitySet'.static.ShredderDamageEffect());
+
+    // Stock Compatibility - deal damage to the target on a miss if you have Stock attached to the weapon	
+    Template.AddTargetEffect(default.WeaponUpgradeMissDamage);
+
+	// Added knockback effect
 	KnockbackEffect = new class'X2Effect_Knockback';
 	KnockbackEffect.KnockbackDistance = 3;
 	Template.AddTargetEffect(KnockbackEffect);
@@ -53,6 +95,8 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	Template.ActivationSpeech = 'RunAndGun';
 
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
+
+	Template.BuildNewGameStateFn = ConcealedShotgunCharge_BuildGameState;
 
 	return Template;
 }
