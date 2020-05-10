@@ -14,6 +14,7 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	local X2AbilityCost_Ammo					AmmoCost;
 	local X2AbilityCost_QuickdrawActionPoints 	ActionPointCost;
 	local X2Effect_PersistentStatChange         Effect;
+	local X2AbilityMultiTarget_Radius           RadiusMultiTarget;
 
 	Template = class'X2Ability_RangerAbilitySet'.static.AddSwordSliceAbility(TemplateName);
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_stealth";
@@ -53,11 +54,18 @@ static function X2AbilityTemplate Create_Shotgun_Charge_Attack(name TemplateName
 	Effect.AddPersistentStatChange(eStat_DetectionRadius, 0, MODOP_PostMultiplication);
 	Effect.BuildPersistentEffect(1, false, false);
 	Effect.DuplicateResponse = eDupe_Ignore;
-	Template.AddMultiTargetEffect(Effect);
+
+	RadiusMultiTarget = new class'X2AbilityMultiTarget_Radius';
+    RadiusMultiTarget.fTargetRadius = 40;
+    RadiusMultiTarget.bIgnoreBlockingCover = true;
+    RadiusMultiTarget.bExcludeSelfAsTargetIfWithinRadius = true;
+    Template.AbilityMultiTargetStyle = RadiusMultiTarget;
+    Template.AddMultiTargetEffect(Effect);
 	
 	//	Removed to avoid clashing "Entering concealment" speech.
 	Template.ActivationSpeech = '';
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
+
 	Template.BuildNewGameStateFn = ConcealedShotgunCharge_BuildGameState;
 
 	return Template;
@@ -131,6 +139,8 @@ static simulated function XComGameState ConcealedShotgunCharge_BuildGameState(XC
 
     // build the "fire" animation for the slash
     TypicalAbility_FillOutGameState(NewGameState); //Costs applied here.	
+
+	UnitState.SetCurrentStat(eStat_DetectionModifier, fUnitDetectionModifier);
 
     //Return the game state we have created
     return NewGameState;
