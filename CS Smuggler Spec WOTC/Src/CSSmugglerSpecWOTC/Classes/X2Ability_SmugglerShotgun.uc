@@ -66,7 +66,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	
 	Template.BuildNewGameStateFn = ShotgunCharge_Stage1_BuildGameState;
 	Template.BuildInterruptGameStateFn = none;	//	This ability cannot be interrupted.
-	Template.BuildVisualizationFn = none;		//	No visualization on purpose. This prevents the soldier from moving when activating this ability.
+	Template.BuildVisualizationFn = ShotgunCharge_BuildVisualization;
 
 	//	This sound effect will be played by the UI.
 	//Template.AbilityConfirmSound = "TacticalUI_ActivateAbility";
@@ -89,11 +89,36 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	return Template;
 }
 
+static function ShotgunCharge_BuildVisualization(XComGameState VisualizeGameState)
+{
+
+	// Adds concealment sound cue and display information
+	local XComGameStateContext_Ability AbilityContext;
+	local X2Action_PlaySoundAndFlyOver SoundAndFlyOver;
+	local int ShooterID;
+	local XComGameStateHistory History;
+	local VisualizationActionMetadata Metadata;
+
+	History = `XCOMHISTORY;
+
+	AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
+	ShooterID = AbilityContext.InputContext.SourceObject.ObjectID;
+
+	Metadata.StateObject_OldState = History.GetGameStateForObjectID(ShooterID, eReturnType_Reference, VisualizeGameState.HistoryIndex - 1);
+	Metadata.StateObject_NewState = VisualizeGameState.GetGameStateForObjectID(ShooterID);
+	if (Metadata.StateObject_NewState == none)
+		Metadata.StateObject_NewState = Metadata.StateObject_OldState;
+	Metadata.VisualizeActor = History.GetVisualizer(ShooterID);
+
+	SoundAndFlyOver = X2Action_PlaySoundAndFlyOver(class'X2Action_PlaySoundAndFlyover'.static.AddToVisualizationTree(Metadata, AbilityContext));
+	SoundAndFlyOver.SetSoundAndFlyOverParameters(SoundCue'SoundTacticalUI.Concealment_Concealed_Cue', class'X2StatusEffects'.default.ConcealedFriendlyName, 'ActivateConcealment', eColor_Good, "", `DEFAULTFLYOVERLOOKATTIME, true);
+
+	class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
+}
+
 static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilityState, StateObjectReference TargetRef, out WeaponDamageValue MinDamagePreview, out WeaponDamageValue MaxDamagePreview, out int AllowsShield)
 {
-	//	TODO: Add proper damage preview to Stage 1. Should do this by grabbing Stage 2 Ability State from the unit and getting its damage preview. 
-
-	// Draft Code
+	// Draft Code, I think this is working, although I think we still need the changes on RPGO for the visualization to be proper
 	local XComGameState_Unit AbilityOwner;
 	local StateObjectReference CSShotgunCharge2Ref;
 	local XComGameState_Ability CSShotgunCharge2Ability;
@@ -149,8 +174,7 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 		//	Conceal the unit
 		UnitState.SetIndividualConcealment(true, NewGameState);
 
-		//	TODO: Check if this method triggers the 'UnitConcealmentEntered' event. If not, trigger it manually here. Might be necessary for compatibility with various concealment perks.
-		// Draft code
+		//	DONE: Check if this method triggers the 'UnitConcealmentEntered' event. If not, trigger it manually here. Might be necessary for compatibility with various concealment perks.
 		`XEVENTMGR.TriggerEvent('UnitConcealmentEntered', UnitState, UnitState, NewGameState);
 
 		//	Perform the necessary visualization
@@ -165,25 +189,28 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 }
 
 private function BuildVisualizationForConcealment_Entered_Individual(XComGameState VisualizeGameState)
-{	
-	//	TODO: Would be nice to play "get into concealment" sound effect when Stage 1 is activated, the same one you hear at the start of the mission.
+{
+	
+	local XComGameStateVisualizationMgr VisualizationMgr;
+	local XComGameStateContext_Ability  AbilityContext;
+	local X2Action                      FoundAction;
+	local X2Action_MoveTurn             MoveTurnAction;
+	local XComGameState_Unit            TargetUnit;
+	local XComGameStateHistory          History;
+	local VisualizationActionMetadata   ActionMetadata;
 
-	// Draft code this is what I tried but it did not work
-	// local XComGameStateHistory         History;
-	// local XComGameStateContext_Ability AbilityContext;
-	// local XComGameState_Ability        Ability;
-	// local VisualizationActionMetadata  ActionMetadata;
-	// local VisualizationActionMetadata  EmptyTrack;
+	VisualizationMgr = `XCOMVISUALIZATIONMGR;
+	History = `XCOMHISTORY;
+	AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
 
-	// History = `XCOMHISTORY;
-	// AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
-	// Ability = XComGameState_Ability(History.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
-	// ActionMetadata = EmptyTrack;
+	FoundAction = VisualizationMgr.GetNodeOfType(VisualizationMgr.BuildVisTree, class'X2Action_MoveEnd');
+	TargetUnit = XComGameState_Unit( History.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID) );
 
-	// class'X2StatusEffects'.static.AddEffectSoundAndFlyOverToTrack(ActionMetadata, VisualizeGameState.GetContext(), class'X2StatusEffects'.default.BleedingOutFriendlyName, 'Poison', eColor_Bad, class'UIUtilities_Image'.const.UnitStatus_Poisoned);
-	// Ability.GetMyTemplate().ActivationSpeech = 'ActivateConcealment';
+	MoveTurnAction = X2Action_MoveTurn(class'X2Action_MoveTurn'.static.AddToVisualizationTree(ActionMetadata, AbilityContext, true));
+    MoveTurnAction.m_vFacePoint =  `XWORLD.GetPositionFromTileCoordinates(TargetUnit.TileLocation);
+    MoveTurnAction.UpdateAimTarget = true;
 
-	//	TODO: Fully rotate the soldier's pawn to face the target before beginning the fire action.
+	VisualizationMgr.ConnectAction(FoundAction, VisualizationMgr.BuildVisTree,, MoveTurnAction);
 
 	class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
 }
