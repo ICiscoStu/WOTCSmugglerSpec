@@ -66,7 +66,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	
 	Template.BuildNewGameStateFn = ShotgunCharge_Stage1_BuildGameState;
 	Template.BuildInterruptGameStateFn = none;	//	This ability cannot be interrupted.
-	Template.BuildVisualizationFn = ShotgunCharge_BuildVisualization;
+	Template.BuildVisualizationFn = ShotgunCharge_Stage1_BuildVisualization;
 
 	//	This sound effect will be played by the UI.
 	//Template.AbilityConfirmSound = "TacticalUI_ActivateAbility";
@@ -89,42 +89,54 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	return Template;
 }
 
-static function ShotgunCharge_BuildVisualization(XComGameState VisualizeGameState)
+static function ShotgunCharge_Stage1_BuildVisualization(XComGameState VisualizeGameState)
 {
-
-	// Adds concealment sound cue and display information
 	local XComGameStateContext_Ability AbilityContext;
 	local X2Action_PlaySoundAndFlyOver SoundAndFlyOver;
 	local int ShooterID;
 	local XComGameStateHistory History;
 	local VisualizationActionMetadata Metadata;
+	local XComGameState_Ability	AbilityState;
+	local string IconImg;
 
 	History = `XCOMHISTORY;
 
+	// Adds concealment sound cue and display information
 	AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
 	ShooterID = AbilityContext.InputContext.SourceObject.ObjectID;
 
+	//	Get the Ability State so we can get Ability Template and use its Icon Image in the flyover.
+	AbilityState = XComGameState_Ability(History.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
+	if (AbilityState != none)
+	{
+		IconImg = AbilityState.GetMyTemplate().IconImage;
+	}
+
+	//	Fill metadata for the shooter unit.
 	Metadata.StateObject_OldState = History.GetGameStateForObjectID(ShooterID, eReturnType_Reference, VisualizeGameState.HistoryIndex - 1);
 	Metadata.StateObject_NewState = VisualizeGameState.GetGameStateForObjectID(ShooterID);
 	if (Metadata.StateObject_NewState == none)
 		Metadata.StateObject_NewState = Metadata.StateObject_OldState;
 	Metadata.VisualizeActor = History.GetVisualizer(ShooterID);
 
-	SoundAndFlyOver = X2Action_PlaySoundAndFlyOver(class'X2Action_PlaySoundAndFlyover'.static.AddToVisualizationTree(Metadata, AbilityContext));
-	SoundAndFlyOver.SetSoundAndFlyOverParameters(SoundCue'SoundTacticalUI.Concealment_Concealed_Cue', class'X2StatusEffects'.default.ConcealedFriendlyName, 'ActivateConcealment', eColor_Good, "", `DEFAULTFLYOVERLOOKATTIME, true);
+	//	Play the sound and flyover without blocking the visualization
+	SoundAndFlyOver = X2Action_PlaySoundAndFlyOver(class'X2Action_PlaySoundAndFlyover'.static.AddToVisualizationTree(Metadata, AbilityContext));							
+	SoundAndFlyOver.SetSoundAndFlyOverParameters(SoundCue'SoundTacticalUI.Concealment_Concealed_Cue', class'X2StatusEffects'.default.ConcealedFriendlyName, 'ActivateConcealment', eColor_Good, IconImg,, false);
 
-	class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
+	//	Unnecessary, we already call it if and when we conceal the soldier.
+	//class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
 }
 
 static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilityState, StateObjectReference TargetRef, out WeaponDamageValue MinDamagePreview, out WeaponDamageValue MaxDamagePreview, out int AllowsShield)
 {
 	// Draft Code, I think this is working, although I think we still need the changes on RPGO for the visualization to be proper
-	local XComGameState_Unit AbilityOwner;
-	local StateObjectReference CSShotgunCharge2Ref;
+	local XComGameState_Unit	AbilityOwner;
+	local StateObjectReference	CSShotgunCharge2Ref;
 	local XComGameState_Ability CSShotgunCharge2Ability;
-	local XComGameStateHistory History;
+	local XComGameStateHistory	History;
 
-	AbilityState.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
+	//	Unnecessary, Stage 1 ability does not apply any effects and does not deal any damage, it will have nothing to add to the damage preview.
+	//AbilityState.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
 
 	History = `XCOMHISTORY;
 	AbilityOwner = XComGameState_Unit(History.GetGameStateForObjectID(AbilityState.OwnerStateObject.ObjectID));
@@ -139,7 +151,6 @@ static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilitySta
 		CSShotgunCharge2Ability.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
 	}
 	return true;
-
 }
 
 static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XComGameStateContext Context)
@@ -190,28 +201,6 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 
 private function BuildVisualizationForConcealment_Entered_Individual(XComGameState VisualizeGameState)
 {
-	
-	local XComGameStateVisualizationMgr VisualizationMgr;
-	local XComGameStateContext_Ability  AbilityContext;
-	local X2Action                      FoundAction;
-	local X2Action_MoveTurn             MoveTurnAction;
-	local XComGameState_Unit            TargetUnit;
-	local XComGameStateHistory          History;
-	local VisualizationActionMetadata   ActionMetadata;
-
-	VisualizationMgr = `XCOMVISUALIZATIONMGR;
-	History = `XCOMHISTORY;
-	AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
-
-	FoundAction = VisualizationMgr.GetNodeOfType(VisualizationMgr.BuildVisTree, class'X2Action_MoveEnd');
-	TargetUnit = XComGameState_Unit( History.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID) );
-
-	MoveTurnAction = X2Action_MoveTurn(class'X2Action_MoveTurn'.static.AddToVisualizationTree(ActionMetadata, AbilityContext, true));
-    MoveTurnAction.m_vFacePoint =  `XWORLD.GetPositionFromTileCoordinates(TargetUnit.TileLocation);
-    MoveTurnAction.UpdateAimTarget = true;
-
-	VisualizationMgr.ConnectAction(FoundAction, VisualizationMgr.BuildVisTree,, MoveTurnAction);
-
 	class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
 }
 
@@ -282,6 +271,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	// Manually stop moving since shotgun has no start/stop fire animation
 	Template.bSkipMoveStop = false;
 	Template.BuildNewGameStateFn = ShotgunCharge_Stage2_BuildGameState;
+	Template.BuildVisualizationFn = ShotgunCharge_Stage2_BuildVisualization;
 
 	//	Remove speech line.
 	Template.ActivationSpeech = '';
@@ -328,6 +318,42 @@ static simulated function XComGameState ShotgunCharge_Stage2_BuildGameState(XCom
 	else `LOG("ERROR, could not get shotgun charge detection modifier Unit Value for unit:" @ UnitState.GetFullName(),, 'CSSmugglerSpecWOTC');
 
 	return NewGameState;
+}
+
+static function ShotgunCharge_Stage2_BuildVisualization(XComGameState VisualizeGameState)
+{
+	local XComGameStateVisualizationMgr VisualizationMgr;
+	local XComGameStateContext_Ability  AbilityContext;
+	local X2Action                      FoundAction;
+	local X2Action_MoveTurn             MoveTurnAction;
+	local XComGameState_Unit            TargetUnit;
+	local XComGameStateHistory          History;
+	local VisualizationActionMetadata   ActionMetadata;
+
+	//	Generate the standard visualization for this ability. Unfortunately, it results in the soldier firing the sawed off before properly turning to the target,
+	//	so we force the unit to turn by inserting a Move Turn action beween the Move End and Fire actions.
+	class'X2Ability'.static.TypicalAbility_BuildVisualization(VisualizeGameState);
+	
+	VisualizationMgr = `XCOMVISUALIZATIONMGR;
+	History = `XCOMHISTORY;
+	AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
+	
+	//	Find the Fire action for the charging soldier.
+	FoundAction = VisualizationMgr.GetNodeOfType(VisualizationMgr.BuildVisTree, class'X2Action_Fire',, AbilityContext.InputContext.SourceObject.ObjectID);
+	TargetUnit = XComGameState_Unit( History.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID) );
+	
+	if (FoundAction != none && TargetUnit != none)
+	{
+		ActionMetadata = FoundAction.Metadata;
+
+		//	Insert a Move Turn action between the parents of the Fire Action and the Fire Action itself.
+		MoveTurnAction = X2Action_MoveTurn(class'X2Action_MoveTurn'.static.AddToVisualizationTree(ActionMetadata, AbilityContext, true,, FoundAction.ParentActions));
+		MoveTurnAction.m_vFacePoint =  `XWORLD.GetPositionFromTileCoordinates(TargetUnit.TileLocation);
+		MoveTurnAction.UpdateAimTarget = true;
+
+		//	Unnecessary, AddToVisualizationTree will already handle all the parenting and reparenting we need.
+		//VisualizationMgr.ConnectAction(FoundAction, VisualizationMgr.BuildVisTree,, MoveTurnAction);
+	}
 }
 
 
