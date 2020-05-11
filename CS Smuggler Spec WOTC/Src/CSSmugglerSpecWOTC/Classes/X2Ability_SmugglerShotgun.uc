@@ -92,6 +92,29 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilityState, StateObjectReference TargetRef, out WeaponDamageValue MinDamagePreview, out WeaponDamageValue MaxDamagePreview, out int AllowsShield)
 {
 	//	TODO: Add proper damage preview to Stage 1. Should do this by grabbing Stage 2 Ability State from the unit and getting its damage preview. 
+
+	// Draft Code
+	local XComGameState_Unit AbilityOwner;
+	local StateObjectReference CSShotgunCharge2Ref;
+	local XComGameState_Ability CSShotgunCharge2Ability;
+	local XComGameStateHistory History;
+
+	AbilityState.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
+
+	History = `XCOMHISTORY;
+	AbilityOwner = XComGameState_Unit(History.GetGameStateForObjectID(AbilityState.OwnerStateObject.ObjectID));
+	CSShotgunCharge2Ref = AbilityOwner.FindAbility('CS_ShotgunCharge_Stage2');
+	CSShotgunCharge2Ability = XComGameState_Ability(History.GetGameStateForObjectID(CSShotgunCharge2Ref.ObjectID));
+	if (CSShotgunCharge2Ability == none)
+	{
+		`LOG("Unit has ChargeShot but is missing ChargeShot2. Not good." );
+	}
+	else
+	{
+		CSShotgunCharge2Ability.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
+	}
+	return true;
+
 }
 
 static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XComGameStateContext Context)
@@ -127,6 +150,8 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 		UnitState.SetIndividualConcealment(true, NewGameState);
 
 		//	TODO: Check if this method triggers the 'UnitConcealmentEntered' event. If not, trigger it manually here. Might be necessary for compatibility with various concealment perks.
+		// Draft code
+		`XEVENTMGR.TriggerEvent('UnitConcealmentEntered', UnitState, UnitState, NewGameState);
 
 		//	Perform the necessary visualization
 		Context.PostBuildVisualizationFn.AddItem(BuildVisualizationForConcealment_Entered_Individual);
@@ -142,6 +167,21 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 private function BuildVisualizationForConcealment_Entered_Individual(XComGameState VisualizeGameState)
 {	
 	//	TODO: Would be nice to play "get into concealment" sound effect when Stage 1 is activated, the same one you hear at the start of the mission.
+
+	// Draft code this is what I tried but it did not work
+	// local XComGameStateHistory         History;
+	// local XComGameStateContext_Ability AbilityContext;
+	// local XComGameState_Ability        Ability;
+	// local VisualizationActionMetadata  ActionMetadata;
+	// local VisualizationActionMetadata  EmptyTrack;
+
+	// History = `XCOMHISTORY;
+	// AbilityContext = XComGameStateContext_Ability(VisualizeGameState.GetContext());
+	// Ability = XComGameState_Ability(History.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
+	// ActionMetadata = EmptyTrack;
+
+	// class'X2StatusEffects'.static.AddEffectSoundAndFlyOverToTrack(ActionMetadata, VisualizeGameState.GetContext(), class'X2StatusEffects'.default.BleedingOutFriendlyName, 'Poison', eColor_Bad, class'UIUtilities_Image'.const.UnitStatus_Poisoned);
+	// Ability.GetMyTemplate().ActivationSpeech = 'ActivateConcealment';
 
 	//	TODO: Fully rotate the soldier's pawn to face the target before beginning the fire action.
 
