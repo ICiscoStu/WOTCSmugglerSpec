@@ -1,4 +1,6 @@
-class X2Ability_SmugglerShotgun extends X2Ability;
+class X2Ability_SmugglerShotgun extends X2Ability config(KnockBack);
+
+var config int KNOCKBACK_TRIGGER_CHANCE;
 
 static function array<X2DataTemplate> CreateTemplates()
 {
@@ -397,15 +399,6 @@ static function X2AbilityTemplate Create_KnockBack()
 	Listener.ListenerData.Priority = 40;
 	Template.AbilityTriggers.AddItem(Listener);
 
-
-	// Give the knockBack Effect
-	KnockBackEffect = new class'X2Effect_Knockback';
-	KnockBackEffect.KnockbackDistance = 3;
-	KnockBackEffect.OverrideRagdollFinishTimerSec = 3;
-	KnockBackEffect.bKnockbackDestroysNonFragile = true;
-	KnockbackEffect.OnlyOnDeath = false;
-	Template.AddTargetEffect(KnockBackEffect);
-
 	// Give the Stunned effect
 	StunnedEffect = new class'X2Effect_Stunned';
 	StunnedEffect.BuildPersistentEffect(1, true, true, false, eGameRule_UnitGroupTurnBegin);
@@ -413,7 +406,7 @@ static function X2AbilityTemplate Create_KnockBack()
 	StunnedEffect.StunLevel = 1;
 	StunnedEffect.bIsImpairing = true;
 	StunnedEffect.EffectHierarchyValue = class'X2StatusEffects'.default.STUNNED_HIERARCHY_VALUE;
-	StunnedEffect.VisualizationFn = class'X2StatusEffects'.static.StunnedVisualization;
+	StunnedEffect.VisualizationFn = none;
 	StunnedEffect.EffectTickedVisualizationFn = class'X2StatusEffects'.static.StunnedVisualizationTicked;
 	StunnedEffect.EffectRemovedVisualizationFn = class'X2StatusEffects'.static.StunnedVisualizationRemoved;
 	StunnedEffect.EffectRemovedFn = class'X2StatusEffects'.static.StunnedEffectRemoved;
@@ -424,6 +417,14 @@ static function X2AbilityTemplate Create_KnockBack()
 	StunnedEffect.VFXSocket = class'X2StatusEffects'.default.StunnedSocket_Name;
 	StunnedEffect.VFXSocketsArrayName = class'X2StatusEffects'.default.StunnedSocketsArray_Name;
 	Template.AddTargetEffect(StunnedEffect);
+
+	// Give the knockBack Effect
+	KnockBackEffect = new class'X2Effect_Knockback';
+	KnockBackEffect.KnockbackDistance = 6;
+	KnockBackEffect.OverrideRagdollFinishTimerSec = 6;
+	KnockBackEffect.bKnockbackDestroysNonFragile = true;
+	KnockbackEffect.OnlyOnDeath = false;
+	Template.AddTargetEffect(KnockBackEffect);
 
 	Template.bSkipFireAction = true;
 	Template.bShowActivation = true;
@@ -437,22 +438,77 @@ static function X2AbilityTemplate Create_KnockBack()
 
 static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
 {
-	local XComGameStateContext_Ability	AbilityContext;
-	local XComGameState_Ability			AbilityState;
-	local XComGameState_Unit			SourceUnit, TargetUnit;
-	local XComGameState_Item			WeaponState;
-	
+	local XComGameStateContext_Ability		AbilityContext;
+	local XComGameState_Ability				AbilityState, KnockBackAbilitySate;
+	local XComGameState_Unit				SourceUnit, TargetUnit;
+	local XComGameState_Item				WeaponState;
+	local XComGameStateHistory				History;
+	local X2AbilityTemplate					AbilityTemplate;
+	local X2Effect							Effect;
+	local X2AbilityMultiTarget_BurstFire	BurstFire;
+	local XComGameStateContext				FindContext;
+    local int								VisualizeIndex;
+	local bool								bDealsDamage;
+	local int								NumShots;
+	local int								i;
+
+
+	History = `XCOMHISTORY;
 	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
+
+	// ability state thaat tiggered this event listener
 	AbilityState = XComGameState_Ability(GameState.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
+	
+	// get the weapon state as we need it to vlidate we are using the porper weapon
 	WeaponState = XComGameState_Item(GameState.GetGameStateForObjectID(AbilityContext.InputContext.ItemObject.ObjectID));
+
+
 	SourceUnit = XComGameState_Unit(EventSource);
 	TargetUnit = XComGameState_Unit(GameState.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID));
+	AbilityTemplate = AbilityState.GetMyTemplate();
 
-	if (AbilityContext != none && AbilityContext.InterruptionStatus != eInterruptionStatus_Interrupt && AbilityState != none && WeaponState != none && SourceUnit != none && TargetUnit != none)
+	if (AbilityState != none && SourceUnit != none && TargetUnit != none && AbilityTemplate != none && WeaponState != none  && AbilityContext.InputContext.ItemObject.ObjectID != 0)
 	{	
-		if (AbilityContext.IsResultContextHit() && AbilityState.GetMyTemplate().Hostility == eHostility_Offensive && WeaponState.GetWeaponCategory() == 'SawedOffShotgun' && TargetUnit.IsAlive())
+		KnockBackAbilitySate = XComGameState_Ability(History.GetGameStateForObjectID(SourceUnit.FindAbility('CS_Smuggler_KnockBack', AbilityContext.InputContext.ItemObject).ObjectID));
+
+		if (KnockBackAbilitySate != none && AbilityContext.IsResultContextHit() && AbilityState.GetMyTemplate().Hostility == eHostility_Offensive && WeaponState.GetWeaponCategory() == 'SawedOffShotgun' && TargetUnit.IsAlive())
 		{
-			class'XComGameStateContext_Ability'.static.ActivateAbilityByTemplateName(SourceUnit.GetReference(), 'CS_Smuggler_KnockBack', AbilityContext.InputContext.PrimaryTarget);
+			foreach AbilityTemplate.AbilityTargetEffects(Effect)
+			{
+				if (X2Effect_ApplyWeaponDamage(Effect) != none)
+				{
+					bDealsDamage = true;
+					break;
+				}				
+			}
+			if (bDealsDamage)
+			{
+				NumShots = 1;
+				BurstFire = X2AbilityMultiTarget_BurstFire(AbilityTemplate.AbilityMultiTargetStyle);
+
+				// this is a multishot ability, increase the number of iterations by the ability number
+				if (BurstFire != none)
+				{
+					NumShots += BurstFire.NumExtraShots;
+				}
+
+				for (i = 0; i < NumShots; i++)
+				{
+					// Triggering ability if it passes a chance check
+					if (`SYNC_RAND_STATIC(100) < default.KNOCKBACK_TRIGGER_CHANCE)
+					{
+						// Pass the Visualize Index to the Context for later use by Merge Vis Fn
+						VisualizeIndex = GameState.HistoryIndex;
+						FindContext = AbilityContext;
+						while (FindContext.InterruptionHistoryIndex > -1)
+						{
+							FindContext = History.GetGameStateFromHistory(FindContext.InterruptionHistoryIndex).GetContext();
+							VisualizeIndex = FindContext.AssociatedState.HistoryIndex;
+						}
+						KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
+					}					
+				}				
+			}
 		}
 	}
 	return ELR_NoInterrupt;	
