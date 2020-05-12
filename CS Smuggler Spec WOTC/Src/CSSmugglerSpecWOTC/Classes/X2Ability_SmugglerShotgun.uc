@@ -7,6 +7,8 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(Create_ShotgunCharge_Stage1());
 	Templates.AddItem(Create_ShotgunCharge_Stage2());
 
+	Templates.AddItem(Create_KnockBack());
+
 	return Templates;
 }
 
@@ -277,6 +279,8 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	Template.ActivationSpeech = '';
 	Template.AbilityConfirmSound = "";
 
+	Template.AdditionalAbilities.AddItem('CS_Smuggler_KnockBack');
+
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
 
 	return Template;
@@ -353,6 +357,184 @@ static function ShotgunCharge_Stage2_BuildVisualization(XComGameState VisualizeG
 
 		//	Unnecessary, AddToVisualizationTree will already handle all the parenting and reparenting we need.
 		//VisualizationMgr.ConnectAction(FoundAction, VisualizationMgr.BuildVisTree,, MoveTurnAction);
+	}
+}
+
+
+static function X2AbilityTemplate Create_KnockBack()
+{
+	local X2AbilityTemplate					Template;
+	local X2AbilityTrigger_EventListener    Listener;
+	local X2Effect_GrantActionPoints        ActionPointEffect;
+	local X2Effect_Knockback				KnockBackEffect;
+	local X2Effect_Stunned					StunnedEffect;
+	
+	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Smuggler_KnockBack');	
+
+	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_drop_unit"; // Placeholder icon
+	Template.eAbilityIconBehaviorHUD = EAbilityIconBehavior_NeverShow;
+	Template.Hostility = eHostility_Neutral;
+
+	Template.AbilityTargetStyle = default.SimpleSingleTarget;
+	Template.AbilityToHitCalc = default.DeadEye;
+
+	Template.AbilityShooterConditions.AddItem(default.LivingShooterProperty);
+	Template.AbilityTargetConditions.AddItem(default.LivingHostileTargetProperty);
+
+
+	// Add the extra action point
+	ActionPointEffect = new class'X2Effect_GrantActionPoints';
+	ActionPointEffect.NumActionPoints = 1;
+	ActionPointEffect.PointType = class'X2CharacterTemplateManager'.default.MoveActionPoint;
+	Template.AddShooterEffect(ActionPointEffect);
+
+	// Add the listener
+	Listener = new class'X2AbilityTrigger_EventListener';
+	Listener.ListenerData.Filter = eFilter_Unit;
+	Listener.ListenerData.Deferral = ELD_OnStateSubmitted;
+	Listener.ListenerData.EventFn = AbilityTriggerEventListener_KnockBack;
+	Listener.ListenerData.EventID = 'AbilityActivated';
+	Listener.ListenerData.Priority = 40;
+	Template.AbilityTriggers.AddItem(Listener);
+
+
+	// Give the knockBack Effect
+	KnockBackEffect = new class'X2Effect_Knockback';
+	KnockBackEffect.KnockbackDistance = 3;
+	KnockBackEffect.OverrideRagdollFinishTimerSec = 3;
+	KnockBackEffect.bKnockbackDestroysNonFragile = true;
+	KnockbackEffect.OnlyOnDeath = false;
+	Template.AddTargetEffect(KnockBackEffect);
+
+	// Give the Stunned effect
+	StunnedEffect = new class'X2Effect_Stunned';
+	StunnedEffect.BuildPersistentEffect(1, true, true, false, eGameRule_UnitGroupTurnBegin);
+	StunnedEffect.EffectName = 'CS_Stun_Effect';
+	StunnedEffect.StunLevel = 1;
+	StunnedEffect.bIsImpairing = true;
+	StunnedEffect.EffectHierarchyValue = class'X2StatusEffects'.default.STUNNED_HIERARCHY_VALUE;
+	StunnedEffect.VisualizationFn = class'X2StatusEffects'.static.StunnedVisualization;
+	StunnedEffect.EffectTickedVisualizationFn = class'X2StatusEffects'.static.StunnedVisualizationTicked;
+	StunnedEffect.EffectRemovedVisualizationFn = class'X2StatusEffects'.static.StunnedVisualizationRemoved;
+	StunnedEffect.EffectRemovedFn = class'X2StatusEffects'.static.StunnedEffectRemoved;
+	StunnedEffect.bRemoveWhenTargetDies = true;
+	StunnedEffect.bCanTickEveryAction = true;
+	StunnedEffect.DamageTypes.AddItem('Mental');
+	StunnedEffect.VFXTemplateName = class'X2StatusEffects'.default.StunnedParticle_Name;
+	StunnedEffect.VFXSocket = class'X2StatusEffects'.default.StunnedSocket_Name;
+	StunnedEffect.VFXSocketsArrayName = class'X2StatusEffects'.default.StunnedSocketsArray_Name;
+	Template.AddTargetEffect(StunnedEffect);
+
+	Template.bSkipFireAction = true;
+	Template.bShowActivation = true;
+	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
+	Template.BuildVisualizationFn = TypicalAbility_BuildVisualization;
+	Template.MergeVisualizationFn = KnockBack_MergeVisualization;
+	Template.BuildInterruptGameStateFn = none;
+
+	return Template;
+}
+
+static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
+{
+	local XComGameStateContext_Ability	AbilityContext;
+	local XComGameState_Ability			AbilityState;
+	local XComGameState_Unit			SourceUnit, TargetUnit;
+	local XComGameState_Item			WeaponState;
+	
+	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
+	AbilityState = XComGameState_Ability(GameState.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
+	WeaponState = XComGameState_Item(GameState.GetGameStateForObjectID(AbilityContext.InputContext.ItemObject.ObjectID));
+	SourceUnit = XComGameState_Unit(EventSource);
+	TargetUnit = XComGameState_Unit(GameState.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID));
+
+	if (AbilityContext != none && AbilityContext.InterruptionStatus != eInterruptionStatus_Interrupt && AbilityState != none && WeaponState != none && SourceUnit != none && TargetUnit != none)
+	{	
+		if (AbilityContext.IsResultContextHit() && AbilityState.GetMyTemplate().Hostility == eHostility_Offensive && WeaponState.GetWeaponCategory() == 'SawedOffShotgun' && TargetUnit.IsAlive())
+		{
+			class'XComGameStateContext_Ability'.static.ActivateAbilityByTemplateName(SourceUnit.GetReference(), 'CS_Smuggler_KnockBack', AbilityContext.InputContext.PrimaryTarget);
+		}
+	}
+	return ELR_NoInterrupt;	
+}
+
+function KnockBack_MergeVisualization(X2Action BuildTree, out X2Action VisualizationTree)
+{
+	local XComGameStateVisualizationMgr		VisMgr;
+	local array<X2Action>					arrActions;
+	local X2Action_MarkerTreeInsertBegin	MarkerStart;
+	local X2Action_MarkerTreeInsertEnd		MarkerEnd;
+	local X2Action							WaitAction;
+	local X2Action_MarkerNamed				MarkerAction;
+	local XComGameStateContext_Ability		AbilityContext;
+	local VisualizationActionMetadata		ActionMetadata;
+	local bool bFoundHistoryIndex;
+	local int i;
+
+	VisMgr = `XCOMVISUALIZATIONMGR;
+	
+	// Find the start of the KnockBack's Vis Tree
+	MarkerStart = X2Action_MarkerTreeInsertBegin(VisMgr.GetNodeOfType(BuildTree, class'X2Action_MarkerTreeInsertBegin'));
+	AbilityContext = XComGameStateContext_Ability(MarkerStart.StateChangeContext);
+
+	//	Find all Fire Actions in the Triggering Shot's Vis Tree
+	VisMgr.GetNodesOfType(VisualizationTree, class'X2Action_Fire', arrActions);
+
+	//	Cycle through all of them to find the Fire Action we need, which will have the same History Index as specified in KnockBack's Context, which gets set in the Event Listener
+	for (i = 0; i < arrActions.Length; i++)
+	{
+		if (arrActions[i].StateChangeContext.AssociatedState.HistoryIndex == AbilityContext.DesiredVisualizationBlockIndex)
+		{
+			bFoundHistoryIndex = true;
+			break;
+		}
+	}
+	//	If we didn't find the correct action, we call the failsafe Merge Vis Function, which will make both KnockBack's Target Effects apply seperately after the ability finishes.
+	//	Looks bad, but at least nothing is broken.
+	if (!bFoundHistoryIndex)
+	{
+		AbilityContext.SuperMergeIntoVisualizationTree(BuildTree, VisualizationTree);
+		return;
+	}
+
+	//	Add a Wait For Effect Action after the Triggering Shot's Fire Action. This will allow KnockBack's Effects to visualize the moment the Triggering Shot connects with the target.
+	AbilityContext = XComGameStateContext_Ability(arrActions[i].StateChangeContext);
+	ActionMetaData = arrActions[i].Metadata;
+	WaitAction = class'X2Action_WaitForAbilityEffect'.static.AddToVisualizationTree(ActionMetaData, AbilityContext,, arrActions[i]);
+
+	//	Insert the KnockBack's Vis Tree right after the Wait For Effect Action
+	VisMgr.ConnectAction(MarkerStart, VisualizationTree,, WaitAction);
+
+	//	Main part of Merge Vis is done, now we just tidy up the ending part. As I understood from MrNice, this is necessary to make sure Vis will look fine if Fire Action ends before Singe finishes visualizing
+	//	which tbh sounds like a super edge case, but okay
+	//	Find all marker actions in the Triggering Shot Vis Tree.
+	VisMgr.GetNodesOfType(VisualizationTree, class'X2Action_MarkerNamed', arrActions);
+
+	//	Cycle through them and find the 'Join' Marker that comes after the Triggering Shot's Fire Action.
+	for (i = 0; i < arrActions.Length; i++)
+	{
+		MarkerAction = X2Action_MarkerNamed(arrActions[i]);
+
+		if (MarkerAction.MarkerName == 'Join' && MarkerAction.StateChangeContext.AssociatedState.HistoryIndex == AbilityContext.DesiredVisualizationBlockIndex)
+		{
+			//	Grab the last Action in the KnockBack Vis Tree
+			MarkerEnd = X2Action_MarkerTreeInsertEnd(VisMgr.GetNodeOfType(BuildTree, class'X2Action_MarkerTreeInsertEnd'));
+
+			//	TBH can't imagine circumstances where MarkerEnd wouldn't exist, but okay
+			if (MarkerEnd != none)
+			{
+				//	"tie the shoelaces". Vis Tree won't move forward until both Knockback Vis Tree and Triggering Shot's Fire action are not fully visualized.
+				VisMgr.ConnectAction(MarkerEnd, VisualizationTree,,, MarkerAction.ParentActions);
+				VisMgr.ConnectAction(MarkerAction, BuildTree,, MarkerEnd);
+			}
+			else
+			{
+				//	not sure what this does
+				VisMgr.GetAllLeafNodes(BuildTree, arrActions);
+				VisMgr.ConnectAction(MarkerAction, BuildTree,,, arrActions);
+			}
+			break;
+		}
 	}
 }
 
