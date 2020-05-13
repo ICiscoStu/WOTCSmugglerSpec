@@ -25,9 +25,6 @@
     <Content Include="Localization\XCOM2RPGOverhaul.int">
       <SubType>Content</SubType>
     </Content>
-    <Content Include="Localization\XComRPGOverhaul.int">
-      <SubType>Content</SubType>
-    </Content>
     <Content Include="ReadMe.txt" />
     <Content Include="ModPreview.jpg" />
     <Content Include="Config\XComEditor.ini" />

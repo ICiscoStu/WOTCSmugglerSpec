@@ -456,7 +456,7 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 	History = `XCOMHISTORY;
 	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
 
-	// ability state thaat tiggered this event listener
+	// ability state that tiggered this event listener
 	AbilityState = XComGameState_Ability(GameState.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
 	
 	// get the weapon state as we need it to vlidate we are using the porper weapon
@@ -490,24 +490,42 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 				if (BurstFire != none)
 				{
 					NumShots += BurstFire.NumExtraShots;
-				}
-
-				for (i = 0; i < NumShots; i++)
-				{
-					// Triggering ability if it passes a chance check
-					if (`SYNC_RAND_STATIC(100) < default.KNOCKBACK_TRIGGER_CHANCE)
+					for (i = 0; i < NumShots; i++)
 					{
-						// Pass the Visualize Index to the Context for later use by Merge Vis Fn
-						VisualizeIndex = GameState.HistoryIndex;
-						FindContext = AbilityContext;
-						while (FindContext.InterruptionHistoryIndex > -1)
+						// Triggering ability if it passes a chance check
+						if (`SYNC_RAND_STATIC(100) < default.KNOCKBACK_TRIGGER_CHANCE)
 						{
-							FindContext = History.GetGameStateFromHistory(FindContext.InterruptionHistoryIndex).GetContext();
-							VisualizeIndex = FindContext.AssociatedState.HistoryIndex;
+							// Pass the Visualize Index to the Context for later use by Merge Vis Fn
+							VisualizeIndex = GameState.HistoryIndex;
+							FindContext = AbilityContext;
+							while (FindContext.InterruptionHistoryIndex > -1)
+							{
+								FindContext = History.GetGameStateFromHistory(FindContext.InterruptionHistoryIndex).GetContext();
+								VisualizeIndex = FindContext.AssociatedState.HistoryIndex;
+							}
+							KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
+						}					
+					}
+				}
+				else
+				{
+					//	for abilities like Faceoff and Saturation Fire
+					if (AbilityTemplate.AbilityMultiTargetStyle != none)
+					{
+						//	activate secondary shot against every enemy targeted by faceoff
+						for (i = 0; i < AbilityContext.InputContext.MultiTargets.Length; i++)
+						{		
+							// Only apply the effect for targets actually hit
+							if (AbilityContext.IsResultContextMultiHit(i))
+							{
+								KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.MultiTargets[i], false, VisualizeIndex);	
+							}
 						}
-						KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
-					}					
-				}				
+					}
+					//	In all other cases, simply Trigger secondary shot against the primary target
+					KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
+				}
+							
 			}
 		}
 	}
@@ -593,7 +611,6 @@ function KnockBack_MergeVisualization(X2Action BuildTree, out X2Action Visualiza
 		}
 	}
 }
-
 
 //	========================================
 //				HELPER FUNCTIONS
