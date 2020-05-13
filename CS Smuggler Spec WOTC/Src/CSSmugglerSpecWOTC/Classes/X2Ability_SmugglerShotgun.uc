@@ -489,7 +489,7 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 			}
 		}
 
-		`LOG("Running Knockback listener for:" @ SourceUnit.GetFullName() @ "unit was concealed:" @ SourceUnit.WasConcealed(GameState.HistoryIndex),, 'CSSmugglerSpecWOTC');
+		//`LOG("Running Knockback listener for:" @ SourceUnit.GetFullName() @ "unit was concealed:" @ SourceUnit.WasConcealed(GameState.HistoryIndex),, 'CSSmugglerSpecWOTC');
 		
 		//	Check if the unit was concealed when they used the ability that triggered this listener.
 		if (AbilityTemplate != none && SourceUnit.WasConcealed(GameState.HistoryIndex) && AbilityTemplate.Hostility == eHostility_Offensive && AbilityState.SourceWeapon == KnockBackAbilitySate.SourceWeapon)
