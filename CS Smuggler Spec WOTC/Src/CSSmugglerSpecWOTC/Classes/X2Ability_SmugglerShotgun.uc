@@ -281,6 +281,8 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	Template.ActivationSpeech = '';
 	Template.AbilityConfirmSound = "";
 
+	//	TODO: Add a Pure Passive ability that will display the icon in the lower left corner, reminding the player that they have the Knockback ability.
+	//	Attach the knockback ability to *that* pure passive, and add that passive into the RPGO Spec tree.
 	Template.AdditionalAbilities.AddItem('CS_Smuggler_KnockBack');
 
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
@@ -373,24 +375,14 @@ static function X2AbilityTemplate Create_KnockBack()
 	
 	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Smuggler_KnockBack');	
 
+	//	Icon Setup
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_drop_unit"; // Placeholder icon
-	Template.eAbilityIconBehaviorHUD = EAbilityIconBehavior_NeverShow;
-	Template.Hostility = eHostility_Neutral;
+	SetHidden(Template);
 
+	//	Targeting and Triggering
 	Template.AbilityTargetStyle = default.SimpleSingleTarget;
 	Template.AbilityToHitCalc = default.DeadEye;
 
-	Template.AbilityShooterConditions.AddItem(default.LivingShooterProperty);
-	Template.AbilityTargetConditions.AddItem(default.LivingHostileTargetProperty);
-
-
-	// Add the extra action point
-	ActionPointEffect = new class'X2Effect_GrantActionPoints';
-	ActionPointEffect.NumActionPoints = 1;
-	ActionPointEffect.PointType = class'X2CharacterTemplateManager'.default.MoveActionPoint;
-	Template.AddShooterEffect(ActionPointEffect);
-
-	// Add the listener
 	Listener = new class'X2AbilityTrigger_EventListener';
 	Listener.ListenerData.Filter = eFilter_Unit;
 	Listener.ListenerData.Deferral = ELD_OnStateSubmitted;
@@ -398,6 +390,14 @@ static function X2AbilityTemplate Create_KnockBack()
 	Listener.ListenerData.EventID = 'AbilityActivated';
 	Listener.ListenerData.Priority = 40;
 	Template.AbilityTriggers.AddItem(Listener);
+
+	//	Shooter Conditions
+	Template.AbilityShooterConditions.AddItem(default.LivingShooterProperty);
+
+	//	Target Conditions
+	Template.AbilityTargetConditions.AddItem(default.LivingHostileTargetProperty);
+
+	//	Ability Target Effects
 
 	// Give the Stunned effect
 	StunnedEffect = new class'X2Effect_Stunned';
@@ -426,12 +426,22 @@ static function X2AbilityTemplate Create_KnockBack()
 	KnockbackEffect.OnlyOnDeath = false;
 	Template.AddTargetEffect(KnockBackEffect);
 
-	Template.bSkipFireAction = true;
-	Template.bShowActivation = true;
+	//	Game States and Viz
+	Template.bSkipFireAction = true;	//	Don't actually shoot the weapon the second time
+	Template.bShowActivation = true;	//	Display flyover when triggering
 	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
 	Template.BuildVisualizationFn = TypicalAbility_BuildVisualization;
+
+	//	Custom Merge Vis so that the effects applied by this ability visualize as if they 
+	//	were applied by the ability that caused this one to trigger.
 	Template.MergeVisualizationFn = KnockBack_MergeVisualization;
-	Template.BuildInterruptGameStateFn = none;
+
+	//	Cannot be interrupted or reacted to, on purpose.
+	Template.BuildInterruptGameStateFn = none;	
+	Template.Hostility = eHostility_Neutral;
+
+	//	Debug only!	Requires increasing sawed off clip size.
+	//Template.AdditionalAbilities.AddItem('SaturationFire');
 
 	return Template;
 }
@@ -439,60 +449,72 @@ static function X2AbilityTemplate Create_KnockBack()
 static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
 {
 	local XComGameStateContext_Ability		AbilityContext;
+	local X2Effect_ApplyWeaponDamage		DamageEffect;
 	local XComGameState_Ability				AbilityState, KnockBackAbilitySate;
-	local XComGameState_Unit				SourceUnit, TargetUnit;
-	local XComGameState_Item				WeaponState;
+	local XComGameState_Unit				SourceUnit;
 	local XComGameStateHistory				History;
 	local X2AbilityTemplate					AbilityTemplate;
 	local X2Effect							Effect;
-	local X2AbilityMultiTarget_BurstFire	BurstFire;
 	local XComGameStateContext				FindContext;
     local int								VisualizeIndex;
-	local bool								bDealsDamage;
-	local int								NumShots;
 	local int								i;
 
-
-	History = `XCOMHISTORY;
 	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
 
-	// ability state that tiggered this event listener
-	AbilityState = XComGameState_Ability(GameState.GetGameStateForObjectID(AbilityContext.InputContext.AbilityRef.ObjectID));
-	
-	// get the weapon state as we need it to vlidate we are using the porper weapon
-	WeaponState = XComGameState_Item(GameState.GetGameStateForObjectID(AbilityContext.InputContext.ItemObject.ObjectID));
-
-
+	//	'AbilityActivated' event is triggered like this: 
+	//	`XEVENTMGR.TriggerEvent('AbilityActivated', AbilityState, SourceUnitState, NewGameState);
+	//	So we get AbilityState as EventData and Source Unit State as EventSource, we just need to cast them.
+	//	Ability state that tiggered this event listener.
+	AbilityState = XComGameState_Ability(EventData);
 	SourceUnit = XComGameState_Unit(EventSource);
-	TargetUnit = XComGameState_Unit(GameState.GetGameStateForObjectID(AbilityContext.InputContext.PrimaryTarget.ObjectID));
-	AbilityTemplate = AbilityState.GetMyTemplate();
 
-	if (AbilityState != none && SourceUnit != none && TargetUnit != none && AbilityTemplate != none && WeaponState != none  && AbilityContext.InputContext.ItemObject.ObjectID != 0)
+	//	In this case we can get the ability state from the CallbackData. When an Event Listener Fn is used as an ability trigger attached to an ability template,
+	//	the Ability State of the ability with that listener will be given to the listener as CallbackData.
+	KnockBackAbilitySate = XComGameState_Ability(CallbackData);
+	
+	if (AbilityContext != none && AbilityContext.InterruptionStatus != eInterruptionStatus_Interrupt && AbilityState != none && SourceUnit != none && KnockBackAbilitySate != none)
 	{	
-		KnockBackAbilitySate = XComGameState_Ability(History.GetGameStateForObjectID(SourceUnit.FindAbility('CS_Smuggler_KnockBack', AbilityContext.InputContext.ItemObject).ObjectID));
+		AbilityTemplate = AbilityState.GetMyTemplate();
 
-		if (KnockBackAbilitySate != none && AbilityContext.IsResultContextHit() && AbilityState.GetMyTemplate().Hostility == eHostility_Offensive && WeaponState.GetWeaponCategory() == 'SawedOffShotgun' && TargetUnit.IsAlive())
+		//	Abilities that involve movement trigger the 'AbilityActivated' event every time the unit moves a tile.
+		//	We don't need to trigger the Knockback ability until the triggering unit finishes their movement.
+		//	So if the triggering ability involves movement
+		if (AbilityContext.InputContext.MovementPaths[0].MovementTiles.Length != 0)
 		{
-			foreach AbilityTemplate.AbilityTargetEffects(Effect)
+			//	If the unit is not currently on the final tile of the movement path
+			if (SourceUnit.TileLocation != AbilityContext.InputContext.MovementPaths[0].MovementTiles[AbilityContext.InputContext.MovementPaths[0].MovementTiles.Length - 1]) 
 			{
-				if (X2Effect_ApplyWeaponDamage(Effect) != none)
-				{
-					bDealsDamage = true;
-					break;
-				}				
+				//	Exit listener.
+				return ELR_NoInterrupt;
 			}
-			if (bDealsDamage)
-			{
-				NumShots = 1;
-				BurstFire = X2AbilityMultiTarget_BurstFire(AbilityTemplate.AbilityMultiTargetStyle);
+		}
 
-				// this is a multishot ability, increase the number of iterations by the ability number
-				if (BurstFire != none)
+		`LOG("Running Knockback listener for:" @ SourceUnit.GetFullName() @ "unit was concealed:" @ SourceUnit.WasConcealed(GameState.HistoryIndex),, 'CSSmugglerSpecWOTC');
+		
+		//	Check if the unit was concealed when they used the ability that triggered this listener.
+		if (AbilityTemplate != none && SourceUnit.WasConcealed(GameState.HistoryIndex) && AbilityTemplate.Hostility == eHostility_Offensive && AbilityState.SourceWeapon == KnockBackAbilitySate.SourceWeapon)
+		{
+			//	Initial checks passed. This event listener was triggered by an offensive ability that came from the same weapon that this Ability is attached to.
+
+			//	TODO: Grant an action point here.
+			//	1. Create a NewGameState
+			//	2. Set up SourceUnit for modification.
+			//	3. Add an action point of this type to SourceUnit.ActionPoints array: class'X2CharacterTemplateManager'.default.MoveActionPoint
+			//	4. Submit New Game State.
+			//	This is okay to do because this listener uses ELD_OnStateSubmitted. It would not be appropriate if this was ELD_Immediate.
+
+			History = `XCOMHISTORY;
+			//	--------------------------------------------------------------------------------------
+			//	## Handle Primary Target of the ability - only if the ability did not miss.
+			if (AbilityContext.IsResultContextHit())
+			{
+				//	Cycle through all ability's target effects to check if the ability deals damage.
+				foreach AbilityTemplate.AbilityTargetEffects(Effect)
 				{
-					NumShots += BurstFire.NumExtraShots;
-					for (i = 0; i < NumShots; i++)
+					DamageEffect = X2Effect_ApplyWeaponDamage(Effect);
+					if (DamageEffect != none && DamageEffect.bApplyOnHit && DamageEffect.bAppliesDamage)
 					{
-						// Triggering ability if it passes a chance check
+						//	If we find at least one effect that deals damage, trigger ability if it passes a chance check
 						if (`SYNC_RAND_STATIC(100) < default.KNOCKBACK_TRIGGER_CHANCE)
 						{
 							// Pass the Visualize Index to the Context for later use by Merge Vis Fn
@@ -505,27 +527,48 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 							}
 							KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
 						}					
-					}
+						//	Stop cycling.
+						break;
+					}				
 				}
-				else
+			}
+			//	--------------------------------------------------------------------------------------
+			//	## Handle Multi Targets of the ability (for abilities like Faceoff and Saturation Fire)
+			if (AbilityTemplate.AbilityMultiTargetStyle != none)
+			{
+				//	Cycle through ability's Multi Target Effects
+				foreach AbilityTemplate.AbilityMultiTargetEffects(Effect)
 				{
-					//	for abilities like Faceoff and Saturation Fire
-					if (AbilityTemplate.AbilityMultiTargetStyle != none)
+					//	If at least one ffect deals damage
+					DamageEffect = X2Effect_ApplyWeaponDamage(Effect);
+					if (DamageEffect != none && DamageEffect.bApplyOnHit && DamageEffect.bAppliesDamage)
 					{
-						//	activate secondary shot against every enemy targeted by faceoff
+						//	Find visualize index if we did not already.
+						if (VisualizeIndex == 0)
+						{
+							VisualizeIndex = GameState.HistoryIndex;
+							FindContext = AbilityContext;
+							while (FindContext.InterruptionHistoryIndex > -1)
+							{
+								FindContext = History.GetGameStateFromHistory(FindContext.InterruptionHistoryIndex).GetContext();
+								VisualizeIndex = FindContext.AssociatedState.HistoryIndex;
+							}
+						}
+
+						//	Cycle through all multi targets
 						for (i = 0; i < AbilityContext.InputContext.MultiTargets.Length; i++)
 						{		
-							// Only apply the effect for targets actually hit
-							if (AbilityContext.IsResultContextMultiHit(i))
+							// Trigger the Knockback ability against each multi target, if the triggering ability did not miss that target and the target passes the chance check.
+							if (AbilityContext.IsResultContextMultiHit(i) && `SYNC_RAND_STATIC(100) < default.KNOCKBACK_TRIGGER_CHANCE)
 							{
 								KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.MultiTargets[i], false, VisualizeIndex);	
 							}
 						}
 					}
-					//	In all other cases, simply Trigger secondary shot against the primary target
-					KnockBackAbilitySate.AbilityTriggerAgainstSingleTarget(AbilityContext.InputContext.PrimaryTarget, false, VisualizeIndex);
+
+					//	Stop cycling
+					break;
 				}
-							
 			}
 		}
 	}
