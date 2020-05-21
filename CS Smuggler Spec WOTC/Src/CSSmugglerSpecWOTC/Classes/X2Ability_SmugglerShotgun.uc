@@ -10,6 +10,7 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(Create_ShotgunCharge_Stage2());
 
 	Templates.AddItem(Create_KnockBack());
+	Templates.AddItem(Knockback_Passive());
 
 	return Templates;
 }
@@ -281,10 +282,6 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	Template.ActivationSpeech = '';
 	Template.AbilityConfirmSound = "";
 
-	//	TODO: Add a Pure Passive ability that will display the icon in the lower left corner, reminding the player that they have the Knockback ability.
-	//	Attach the knockback ability to *that* pure passive, and add that passive into the RPGO Spec tree.
-	Template.AdditionalAbilities.AddItem('CS_Smuggler_KnockBack');
-
 	Template.LostSpawnIncreasePerUse = class'X2AbilityTemplateManager'.default.StandardShotLostSpawnIncreasePerUse;
 
 	return Template;
@@ -440,8 +437,7 @@ static function X2AbilityTemplate Create_KnockBack()
 	Template.BuildInterruptGameStateFn = none;	
 	Template.Hostility = eHostility_Neutral;
 
-	//	Debug only!	Requires increasing sawed off clip size.
-	//Template.AdditionalAbilities.AddItem('SaturationFire');
+	Template.AdditionalAbilities.AddItem('CS_Knockback_Passive');
 
 	return Template;
 }
@@ -458,6 +454,7 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 	local XComGameStateContext				FindContext;
     local int								VisualizeIndex;
 	local int								i;
+	local XComGameState						NewGameState;
 
 	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
 
@@ -502,6 +499,11 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 			//	3. Add an action point of this type to SourceUnit.ActionPoints array: class'X2CharacterTemplateManager'.default.MoveActionPoint
 			//	4. Submit New Game State.
 			//	This is okay to do because this listener uses ELD_OnStateSubmitted. It would not be appropriate if this was ELD_Immediate.
+			`LOG("giving extra action point to for:" @ SourceUnit.GetFullName() @ "unit was concealed:" @ SourceUnit.WasConcealed(GameState.HistoryIndex),, 'CSSmugglerSpecWOTC --------------');
+			NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState(string(GetFuncName()));
+			SourceUnit = XComGameState_Unit(NewGameState.ModifyStateObject(SourceUnit.Class, SourceUnit.ObjectID));
+			SourceUnit.ActionPoints.AddItem(class'X2CharacterTemplateManager'.default.MoveActionPoint);
+			`TACTICALRULES.SubmitGameState(NewGameState);
 
 			History = `XCOMHISTORY;
 			//	--------------------------------------------------------------------------------------
@@ -653,6 +655,14 @@ function KnockBack_MergeVisualization(X2Action BuildTree, out X2Action Visualiza
 			break;
 		}
 	}
+}
+
+static function X2AbilityTemplate Knockback_Passive()
+{
+	local X2AbilityTemplate	Template;
+
+	Template = PurePassive('CS_Knockback_Passive', "img:///UILibrary_PerkIcons.UIPerk_drop_unit");
+	return Template;
 }
 
 //	========================================
