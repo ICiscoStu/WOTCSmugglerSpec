@@ -9,9 +9,9 @@ function int GetWeaponRangeModifier(XComGameState_Unit Shooter, XComGameState_Un
 	{
 		WeaponTemplate = X2WeaponTemplate(Weapon.GetMyTemplate());
 
-		if (WeaponTemplate != none)
+		if (WeaponTemplate != none && WeaponTemplate.RangeAccuracy.Length >= 2)
 		{
-			Modifier = WeaponTemplate.RangeAccuracy[0];
+			Modifier = WeaponTemplate.RangeAccuracy[1];
 		}
 	}
 
