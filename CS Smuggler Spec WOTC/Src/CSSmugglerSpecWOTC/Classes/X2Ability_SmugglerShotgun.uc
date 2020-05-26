@@ -23,13 +23,16 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	local X2AbilityTemplate						Template;
 	local X2AbilityCost_Ammo					AmmoCost;
 	local X2AbilityCost_QuickdrawActionPoints 	ActionPointCost;
+	local X2AbilityToHitCalc_ShotgunCharge      AbilityToHitCalc;
 
 	Template = class'X2Ability_RangerAbilitySet'.static.AddSwordSliceAbility(TemplateName);
 
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_stealth";
 
 	//	Stage 1 is used just for targeting, so sse a custom ToHitCalc to display the "real" hit chance, but make the ability always hit in the background.
-	Template.AbilityToHitCalc = new class'X2AbilityToHitCalc_ShotgunCharge';
+	AbilityToHitCalc = new class'X2AbilityToHitCalc_ShotgunCharge';
+	AbilityToHitCalc.bAlwaysHit = true;
+	Template.AbilityToHitCalc = AbilityToHitCalc;
 
 	//	Remove ability costs and replace them with ours
 	//	Set them as Free Costs here; they will be actually applied by Stage 2 ability.
@@ -212,7 +215,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	//	The RPGO logic that handles reducing hit chance by distance needs to check if the ability whose damage is beind modified has
 	//	"X2AbilityTarget_MovingMelee(Template.AbilityTargetStyle) != none" or "Template.TargetingMethod == class'X2TargetingMethod_MeleePath'", 
 	//	and in that case return damage / hit chance modifiers as if the soldier is on the neighboring tile to the enemy.
-	Template.AbilityToHitCalc = default.SimpleStandardAim;
+	Template.AbilityToHitCalc = new class'X2AbilityToHitCalc_ShotgunCharge';
 
 	//	Hide the ability from UI
 	SetHidden(Template);

@@ -1,5 +1,7 @@
 class X2AbilityToHitCalc_ShotgunCharge extends X2AbilityToHitCalc_StandardAim;
 
+var() bool bAlwaysHit;
+
 function int GetWeaponRangeModifier(XComGameState_Unit Shooter, XComGameState_Unit Target, XComGameState_Item Weapon)
 {
 	local X2WeaponTemplate WeaponTemplate;
@@ -22,7 +24,14 @@ function int GetWeaponRangeModifier(XComGameState_Unit Shooter, XComGameState_Un
 function RollForAbilityHit(XComGameState_Ability kAbility, AvailableTarget kTarget, out AbilityResultContext ResultContext)
 {
 
-	// `LOG("changing stage ability to always hit:",, 'CSSmugglerSpecWOTC ---------------------------------------');
-	// Always hits
-	ResultContext.HitResult = eHit_Success;
+	if (bAlwaysHit)
+	{
+		`LOG("always hit:",, 'CSSmugglerSpecWOTC --------------------------------');
+		ResultContext.HitResult = eHit_Success;
+	}
+	else
+	{
+		`LOG("use regulr roll for ability",, 'CSSmugglerSpecWOTC --------------------------------');
+		super.RollForAbilityHit(kAbility, kTarget, ResultContext);
+	}
 }
