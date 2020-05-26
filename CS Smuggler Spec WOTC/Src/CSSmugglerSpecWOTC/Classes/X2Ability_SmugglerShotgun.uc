@@ -9,8 +9,8 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(Create_ShotgunCharge_Stage1());
 	Templates.AddItem(Create_ShotgunCharge_Stage2());
 
-	Templates.AddItem(Create_KnockBack());
-	Templates.AddItem(Knockback_Passive());
+	Templates.AddItem(Create_KnockDown());
+	Templates.AddItem(Create_KnockDown_Passive());
 
 	return Templates;
 }
@@ -28,10 +28,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_stealth";
 
-	//	Stage 1 is used just for targeting, so it's guaranteed to hit.
-	//	TODO: Make this ability display its hit chance properly in the targeting preview.
-	//	Might require a custom To Hit Calc.
-	//	Essentially we need *this* ability to always hit, but display in the preview the chance to hit from another ability.
+	//	Stage 1 is used just for targeting, so sse a custom ToHitCalc to display the "real" hit chance, but make the ability always hit in the background.
 	Template.AbilityToHitCalc = new class'X2AbilityToHitCalc_ShotgunCharge';
 
 	//	Remove ability costs and replace them with ours
@@ -210,7 +207,6 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 	Template = class'X2Ability_RangerAbilitySet'.static.AddSwordSliceAbility(TemplateName);
 
 	//	Use standard hit calc instead of melee one.
-	//	TODO: Make this ability's hit chance unaffected by Sawed Off's range penalties. 
 	//	Or, rather, they need to affect this ability *after* the soldier has closed the distance.
 	//	Might require a custom ToHitCalc, though it's easier to address this on the side of the RPGO.
 	//	The RPGO logic that handles reducing hit chance by distance needs to check if the ability whose damage is beind modified has
@@ -244,7 +240,6 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
     Template.AddTargetEffect(class'X2Ability_GrenadierAbilitySet'.static.HoloTargetEffect());
 
 	// Same as ApplyWeaponDamage, but also shreds target armor if the soldier has the Shredder ability.
-	//	TODO: Make it so this ability's damage is not affected by RPGO's "reduce damage at range" logic. See above for more details.
     Template.AddTargetEffect(class'X2Ability_GrenadierAbilitySet'.static.ShredderDamageEffect());
 
     Template.AddTargetEffect(default.WeaponUpgradeMissDamage);	// Stock Compatibility - deal damage to the target on a miss if you have Stock attached to the weapon	
@@ -350,14 +345,14 @@ static function ShotgunCharge_Stage2_BuildVisualization(XComGameState VisualizeG
 }
 
 
-static function X2AbilityTemplate Create_KnockBack()
+static function X2AbilityTemplate Create_KnockDown()
 {
 	local X2AbilityTemplate					Template;
 	local X2AbilityTrigger_EventListener    Listener;
 	local X2Effect_Knockback				KnockBackEffect;
 	local X2Effect_Stunned					StunnedEffect;
 	
-	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Smuggler_KnockBack');	
+	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Smuggler_KnockDown');	
 
 	//	Icon Setup
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_drop_unit"; // Placeholder icon
@@ -424,7 +419,7 @@ static function X2AbilityTemplate Create_KnockBack()
 	Template.BuildInterruptGameStateFn = none;	
 	Template.Hostility = eHostility_Neutral;
 
-	Template.AdditionalAbilities.AddItem('CS_Knockback_Passive');
+	Template.AdditionalAbilities.AddItem('CS_KnockDown_Passive');
 
 	return Template;
 }
@@ -638,11 +633,11 @@ function KnockBack_MergeVisualization(X2Action BuildTree, out X2Action Visualiza
 	}
 }
 
-static function X2AbilityTemplate Knockback_Passive()
+static function X2AbilityTemplate Create_KnockDown_Passive()
 {
 	local X2AbilityTemplate	Template;
 
-	Template = PurePassive('CS_Knockback_Passive', "img:///UILibrary_PerkIcons.UIPerk_drop_unit");
+	Template = PurePassive('CS_KnockDown_Passive', "img:///UILibrary_PerkIcons.UIPerk_drop_unit");
 	return Template;
 }
 
