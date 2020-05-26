@@ -32,10 +32,7 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	//	TODO: Make this ability display its hit chance properly in the targeting preview.
 	//	Might require a custom To Hit Calc.
 	//	Essentially we need *this* ability to always hit, but display in the preview the chance to hit from another ability.
-	Template.AbilityToHitCalc = default.DeadEye;
-
-	//Template.AbilityTargetStyle = default.SimpleSingleTarget;
-	//Template.TargetingMethod = class'X2TargetingMethod_MeleePath';
+	Template.AbilityToHitCalc = new class'X2AbilityToHitCalc_ShotgunCharge';
 
 	//	Remove ability costs and replace them with ours
 	//	Set them as Free Costs here; they will be actually applied by Stage 2 ability.
@@ -74,7 +71,6 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage1(name TemplateName 
 	Template.BuildVisualizationFn = ShotgunCharge_Stage1_BuildVisualization;
 
 	//	This sound effect will be played by the UI.
-	//Template.AbilityConfirmSound = "TacticalUI_ActivateAbility";
 	Template.AbilityConfirmSound = "TacticalUI_Activate_Ability_Run_N_Gun";
 
 	//	Removing speech lines from this ability is not necessary, since those are played by Build Visualization function, which we don't have.
@@ -128,8 +124,6 @@ static function ShotgunCharge_Stage1_BuildVisualization(XComGameState VisualizeG
 	SoundAndFlyOver = X2Action_PlaySoundAndFlyOver(class'X2Action_PlaySoundAndFlyover'.static.AddToVisualizationTree(Metadata, AbilityContext));							
 	SoundAndFlyOver.SetSoundAndFlyOverParameters(SoundCue'SoundTacticalUI.Concealment_Concealed_Cue', class'X2StatusEffects'.default.ConcealedFriendlyName, 'ActivateConcealment', eColor_Good, IconImg,, false);
 
-	//	Unnecessary, we already call it if and when we conceal the soldier.
-	//class'XComGameState_Unit'.static.BuildVisualizationForConcealmentChanged(VisualizeGameState, true);	
 }
 
 static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilityState, StateObjectReference TargetRef, out WeaponDamageValue MinDamagePreview, out WeaponDamageValue MaxDamagePreview, out int AllowsShield)
@@ -139,9 +133,6 @@ static function bool ShotgunChargeDamagePreview(XComGameState_Ability AbilitySta
 	local StateObjectReference	CSShotgunCharge2Ref;
 	local XComGameState_Ability CSShotgunCharge2Ability;
 	local XComGameStateHistory	History;
-
-	//	Unnecessary, Stage 1 ability does not apply any effects and does not deal any damage, it will have nothing to add to the damage preview.
-	//AbilityState.NormalDamagePreview(TargetRef, MinDamagePreview, MaxDamagePreview, AllowsShield);
 
 	History = `XCOMHISTORY;
 	AbilityOwner = XComGameState_Unit(History.GetGameStateForObjectID(AbilityState.OwnerStateObject.ObjectID));
@@ -190,14 +181,11 @@ static simulated function XComGameState ShotgunCharge_Stage1_BuildGameState(XCom
 		//	Conceal the unit
 		UnitState.SetIndividualConcealment(true, NewGameState);
 
-		//	DONE: Check if this method triggers the 'UnitConcealmentEntered' event. If not, trigger it manually here. Might be necessary for compatibility with various concealment perks.
 		`XEVENTMGR.TriggerEvent('UnitConcealmentEntered', UnitState, UnitState, NewGameState);
 
 		//	Perform the necessary visualization
 		Context.PostBuildVisualizationFn.AddItem(BuildVisualizationForConcealment_Entered_Individual);
 	
-		//	Should not do activate concealment through this Event, since the function ran by this event submits a new game state, and we already have one created.
-		//`XEVENTMGR.TriggerEvent('EffectEnterUnitConcealment', UnitState, UnitState, NewGameState);
     }
    
     //Return the game state we have created
@@ -366,7 +354,6 @@ static function X2AbilityTemplate Create_KnockBack()
 {
 	local X2AbilityTemplate					Template;
 	local X2AbilityTrigger_EventListener    Listener;
-	local X2Effect_GrantActionPoints        ActionPointEffect;
 	local X2Effect_Knockback				KnockBackEffect;
 	local X2Effect_Stunned					StunnedEffect;
 	
@@ -493,13 +480,7 @@ static function EventListenerReturn AbilityTriggerEventListener_KnockBack(Object
 		{
 			//	Initial checks passed. This event listener was triggered by an offensive ability that came from the same weapon that this Ability is attached to.
 
-			//	TODO: Grant an action point here.
-			//	1. Create a NewGameState
-			//	2. Set up SourceUnit for modification.
-			//	3. Add an action point of this type to SourceUnit.ActionPoints array: class'X2CharacterTemplateManager'.default.MoveActionPoint
-			//	4. Submit New Game State.
-			//	This is okay to do because this listener uses ELD_OnStateSubmitted. It would not be appropriate if this was ELD_Immediate.
-			`LOG("giving extra action point to for:" @ SourceUnit.GetFullName() @ "unit was concealed:" @ SourceUnit.WasConcealed(GameState.HistoryIndex),, 'CSSmugglerSpecWOTC --------------');
+			// Grant an extra action once the checks are passed regarless of the outcome of the attack
 			NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState(string(GetFuncName()));
 			SourceUnit = XComGameState_Unit(NewGameState.ModifyStateObject(SourceUnit.Class, SourceUnit.ObjectID));
 			SourceUnit.ActionPoints.AddItem(class'X2CharacterTemplateManager'.default.MoveActionPoint);
