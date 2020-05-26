@@ -16,7 +16,7 @@
     <Folder Include="Src\CSSmugglerSpecWOTC\Classes\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Config\XComKnockBack.ini">
+    <Content Include="Config\XComKnockDown.ini">
       <SubType>Content</SubType>
     </Content>
     <Content Include="Config\XComRPG.ini">

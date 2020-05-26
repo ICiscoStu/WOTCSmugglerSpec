@@ -1,4 +1,4 @@
-class X2Ability_SmugglerShotgun extends X2Ability config(KnockBack);
+class X2Ability_SmugglerShotgun extends X2Ability config(KnockDown);
 
 var config int KNOCKBACK_TRIGGER_CHANCE;
 
