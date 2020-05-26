@@ -275,14 +275,48 @@ static function X2AbilityTemplate Create_ShotgunCharge_Stage2(name TemplateName 
 
 static function EventListenerReturn AbilityTriggerEventListener_ShotgunCharge(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
 {
-	local XComGameState_Ability	AbilityState;
+	local XComGameStateContext_Ability	AbilityContext;
+	local XComGameState_Unit			SourceUnit;
+	local XComGameState_Ability			AbilityState;
+	local GameRulesCache_Unit			UnitCache;
+	local int i, j;
+
+	AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
 	
-	AbilityState = XComGameState_Ability(CallbackData);
+	if (AbilityContext != none && AbilityContext.InterruptionStatus != eInterruptionStatus_Interrupt)
+	{
+		//	If Stage 1 did not include movement, then simply trigger Stage 2 against the same target.
+		if (AbilityContext.InputContext.MovementPaths.Length == 0)
+		{
+			return AbilityState.AbilityTriggerEventListener_OriginalTarget(EventData, EventSource, GameState, EventID, CallbackData);
+		}
 
-	`LOG("Running event trigger listener for ability:" @ AbilityState.GetMyTemplateName(),, 'CSSmugglerSpecWOTC');
-	//	TODO for Iridar: Add custom logic that would make Stage 2 ability move the soldier to the specific tile selected by the player during Stage 1.
+		AbilityState = XComGameState_Ability(CallbackData);
+		SourceUnit = XComGameState_Unit(GameState.GetGameStateForObjectID(AbilityContext.InputContext.SourceObject.ObjectID));
 
-	return AbilityState.AbilityTriggerEventListener_OriginalTarget(EventData, EventSource, GameState, EventID, CallbackData);
+		if (`TACTICALRULES.GetGameRulesCache_Unit(SourceUnit.GetReference(), UnitCache))	//we get UnitCache for the soldier that triggered this ability
+		{
+			for (i = 0; i < UnitCache.AvailableActions.Length; i++)	//then in all actions available to him
+			{
+				if (UnitCache.AvailableActions[i].AbilityObjectRef.ObjectID == AbilityState.ObjectID)	//we find our ability
+				{
+					if (UnitCache.AvailableActions[i].AvailableCode == 'AA_Success')
+					{
+						for (j = 0; j < UnitCache.AvailableActions[i].AvailableTargets.Length; j++)
+						{
+							if (UnitCache.AvailableActions[i].AvailableTargets[j].PrimaryTarget == AbilityContext.InputContext.PrimaryTarget)
+							{
+								class'XComGameStateContext_Ability'.static.ActivateAbility(UnitCache.AvailableActions[i], j, /*TargetLocations*/, /*TargetingMethod*/, AbilityContext.InputContext.MovementPaths[0].MovementTiles, AbilityContext.InputContext.MovementPaths[0].WaypointTiles);
+								break;
+							}
+						}
+					}
+					break;
+				}
+			}
+		}
+	}
+	return ELR_NoInterrupt;
 }
 
 static simulated function XComGameState ShotgunCharge_Stage2_BuildGameState(XComGameStateContext Context)
@@ -382,6 +416,7 @@ static function X2AbilityTemplate Create_KnockDown()
 	//	Ability Target Effects
 
 	// Give the Stunned effect
+	//	TODO for Iridar: Potentially changed Effect Visualization animations: CustomIdleOverrideAnim="HL_StunnedIdle", StunStartAnimName="HL_StunnedStart", StunStopAnimName="HL_StunnedStop"
 	StunnedEffect = new class'X2Effect_Stunned';
 	StunnedEffect.BuildPersistentEffect(1, true, true, false, eGameRule_UnitGroupTurnBegin);
 	StunnedEffect.EffectName = 'CS_Stun_Effect';
