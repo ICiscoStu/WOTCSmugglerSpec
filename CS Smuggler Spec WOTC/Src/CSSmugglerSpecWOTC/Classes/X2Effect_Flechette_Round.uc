@@ -64,17 +64,12 @@ function int GetExtraShredValue(XComGameState_Effect EffectState, XComGameState_
 simulated protected function OnEffectAdded(const out EffectAppliedData ApplyEffectParameters, XComGameState_BaseObject kNewTargetState, XComGameState NewGameState, XComGameState_Effect NewEffectState)
 {
     local XComGameState_Unit				UnitState;
-	local XComGameState_Item				WeaponState, NewWeaponState;
+	local XComGameState_Item				WeaponState;
 	local StateObjectReference				ReloadSawedOffRef;
 	local XComGameState_Ability				ReloadSawedOffAbility;
 	local int								ClipSize;
 
-	UnitState = XComGameState_Unit(NewGameState.GetGameStateForObjectID(ApplyEffectParameters.TargetStateObjectRef.ObjectID));
-	if (UnitState == none)
-	{
-		UnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', ApplyEffectParameters.TargetStateObjectRef.ObjectID));
-	}
-
+	UnitState = XComGameState_Unit(kNewTargetState);
     if (UnitState != none)
     {
 		WeaponState = XComGameState_Item(NewGameState.GetGameStateForObjectID(ApplyEffectParameters.ItemStateObjectRef.ObjectID));
@@ -85,27 +80,30 @@ simulated protected function OnEffectAdded(const out EffectAppliedData ApplyEffe
 
 		if (WeaponState != none)
 		{
-			NewWeaponState = XComGameState_Item(NewGameState.ModifyStateObject(WeaponState.Class, WeaponState.ObjectID));
 			ClipSize = WeaponState.GetClipSize();
-
-			NewWeaponState.Ammo += AmmoToReload;
-            if(NewWeaponState.Ammo > ClipSize)
-            {
-                  NewWeaponState.Ammo = ClipSize;
-            }
-			else
+			//	If weapon's Ammo is not full, then load +1 Ammo
+			if (WeaponState.Ammo < ClipSize)
 			{
+				WeaponState.Ammo += AmmoToReload;
+				if (WeaponState.Ammo > ClipSize)
+				{
+					  WeaponState.Ammo = ClipSize;
+				}
+			}
+			else
+			{	
+				//	If weapon is already at full ammo, grant +1 Charge to Reload Sawed Off ability.
 				ReloadSawedOffRef = UnitState.FindAbility('RpgSawnOffReload');
 				if(ReloadSawedOffRef.ObjectID > 0)
 				{
-					ReloadSawedOffAbility = XComGameState_Ability(`XCOMHISTORY.GetGameStateForObjectID(ReloadSawedOffRef.ObjectID));
+					ReloadSawedOffAbility = XComGameState_Ability(NewGameState.ModifyStateObject(ReloadSawedOffAbility.Class, ReloadSawedOffRef.ObjectID));
 					if(ReloadSawedOffAbility != none)
 					{
-						ReloadSawedOffAbility = XComGameState_Ability(NewGameState.ModifyStateObject(ReloadSawedOffAbility.Class, ReloadSawedOffAbility.ObjectID));
 						ReloadSawedOffAbility.iCharges += AmmoToReload;
 					}	
 				}
 			}
+			
 		}
     }
     super.OnEffectAdded(ApplyEffectParameters, kNewTargetState, NewGameState, NewEffectState);
