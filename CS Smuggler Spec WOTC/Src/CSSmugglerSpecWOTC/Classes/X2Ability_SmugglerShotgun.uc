@@ -12,6 +12,8 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(Create_KnockDown());
 	Templates.AddItem(Create_KnockDown_Passive());
 
+	Templates.AddItem(Create_Flechette_Round());
+
 	return Templates;
 }
 
@@ -676,6 +678,53 @@ static function X2AbilityTemplate Create_KnockDown_Passive()
 	local X2AbilityTemplate	Template;
 
 	Template = PurePassive('CS_KnockDown_Passive', "img:///UILibrary_PerkIcons.UIPerk_drop_unit");
+	return Template;
+}
+
+static function X2AbilityTemplate Create_Flechette_Round(name TemplateName = 'CS_Flechette_Round')
+{
+	local X2AbilityTemplate                 Template;	
+	local X2AbilityCost_ActionPoints        ActionPointCost;
+	local X2AbilityCharges					Charges;
+	local X2AbilityCost_Charges				ChargeCost;
+	local X2Condition_UnitProperty          ShooterPropertyCondition;
+	local X2AbilityTrigger_PlayerInput      InputTrigger;
+	local X2Effect_Flechette_Round 	        PersistentEffect;
+
+	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Flechette_Round');	
+
+	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_reload";
+	Template.bDontDisplayInAbilitySummary = false;
+
+	ActionPointCost = new class'X2AbilityCost_ActionPoints';
+	Template.AbilityCosts.AddItem(ActionPointCost);
+
+	Charges = new class 'X2AbilityCharges';
+	Charges.InitialCharges = 3; // TODO; get the proper X charges ??
+	Template.AbilityCharges = Charges;
+
+	ChargeCost = new class'X2AbilityCost_Charges';
+	ChargeCost.NumCharges = 1;
+	Template.AbilityCosts.AddItem(ChargeCost);
+
+	ShooterPropertyCondition = new class'X2Condition_UnitProperty';	
+	ShooterPropertyCondition.ExcludeDead = true;
+	Template.AbilityShooterConditions.AddItem(ShooterPropertyCondition);
+
+	InputTrigger = new class'X2AbilityTrigger_PlayerInput';
+	Template.AbilityTriggers.AddItem(InputTrigger);
+
+	Template.AbilityToHitCalc = default.DeadEye;
+	Template.AbilityTargetStyle = default.SelfTarget;
+	
+	Template.AbilitySourceName = 'eAbilitySource_Perk';
+
+	PersistentEffect = new class'X2Effect_Flechette_Round';
+	PersistentEffect.AmmoToReload = 1;
+	Template.AddTargetEffect(PersistentEffect);
+
+	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
+
 	return Template;
 }
 
