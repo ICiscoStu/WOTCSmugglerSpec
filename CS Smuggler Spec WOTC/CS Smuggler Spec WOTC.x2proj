@@ -41,6 +41,9 @@
     <Content Include="Src\CSSmugglerSpecWOTC\Classes\X2Effect_Flechette_Round.uc">
       <SubType>Content</SubType>
     </Content>
+    <Content Include="Src\CSSmugglerSpecWOTC\Classes\X2Item_FlechetteAmmo.uc">
+      <SubType>Content</SubType>
+    </Content>
   </ItemGroup>
   <Import Project="$(MSBuildLocalExtensionPath)\XCOM2.targets" />
 </Project>
