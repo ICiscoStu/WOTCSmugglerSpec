@@ -2,6 +2,131 @@ class X2Effect_Flechette_Round extends X2Effect_Persistent;
 
 var int AmmoToReload;
 
+function RegisterForEvents(XComGameState_Effect EffectGameState)
+{
+    local X2EventManager EventMgr;
+    local XComGameState_Unit UnitState;
+    local Object EffectObj;
+
+    EffectObj = EffectGameState;
+    UnitState = XComGameState_Unit(`XCOMHISTORY.GetGameStateForObjectID(EffectGameState.ApplyEffectParameters.SourceStateObjectRef.ObjectID));
+
+    EventMgr = `XEVENTMGR;
+    EventMgr.RegisterForEvent(EffectObj, 'AbilityActivated', FlechetteRoundActivatedEventListener, ELD_OnStateSubmitted,, UnitState,, EffectObj);
+}
+
+simulated protected function OnEffectAdded(const out EffectAppliedData ApplyEffectParameters, XComGameState_BaseObject kNewTargetState, XComGameState NewGameState, XComGameState_Effect NewEffectState)
+{
+    local XComGameState_Unit		UnitState;
+	local XComGameState_Item		WeaponState, AmmoState;
+	local StateObjectReference		ReloadSawedOffRef;
+	local XComGameState_Ability		ReloadSawedOffAbility;
+	local int						ClipSize;
+	local X2ItemTemplate			AmmoTemplate;
+
+	UnitState = XComGameState_Unit(kNewTargetState);
+
+    if (UnitState != none)
+    {
+		WeaponState = XComGameState_Item(`XCOMHISTORY.GetGameStateForObjectID(ApplyEffectParameters.ItemStateObjectRef.ObjectID));
+		if (WeaponState != none)
+		{
+			//	## Load Flechette Ammo into the weapon.
+
+			//	Grab the Item State of the weapon from the New Game State, if it exists there. Set it up for modification, if it doesn't.
+			WeaponState = XComGameState_Item(NewGameState.GetGameStateForObjectID(WeaponState.ObjectID));
+			if (WeaponState == none)
+			{
+				WeaponState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', ApplyEffectParameters.ItemStateObjectRef.ObjectID));
+			}
+
+			//	Record the Object ID of the ammo loaded into the weapon.
+			//	We don't care if there's actually any special ammo loaded. If the ObjectID is zero, then we record zero.
+			//	We will restore this ObjectID after one weapon shot.
+			NewEffectState.GrantsThisTurn = WeaponState.LoadedAmmo.ObjectID;
+
+			// Create new instance of Flechette Ammo and load it into the weapon.
+			AmmoTemplate = class'X2ItemTemplateManager'.static.GetItemTemplateManager().FindItemTemplate('FlechetteRounds');
+			AmmoState = AmmoTemplate.CreateInstanceFromTemplate(NewGameState);
+			`LOG("OnEffectAdded, old ammo:" @ WeaponState.LoadedAmmo.ObjectID @ "new ammo:" @ AmmoState.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
+			WeaponState.LoadedAmmo = AmmoState.GetReference();
+
+			//	## Reload Ammo into the weapon.
+			ClipSize = WeaponState.GetClipSize();
+			//	If weapon's Ammo is not full, then load +1 Ammo
+			if (WeaponState.Ammo < ClipSize)
+			{
+				// reload ammo
+				WeaponState.Ammo += AmmoToReload;
+				if (WeaponState.Ammo > ClipSize)
+				{
+					  WeaponState.Ammo = ClipSize;
+				}
+			}
+			else
+			{	
+				//	If weapon is already at full ammo, grant +1 Charge to Reload Sawed Off ability.
+				ReloadSawedOffRef = UnitState.FindAbility('RpgSawnOffReload');
+				if(ReloadSawedOffRef.ObjectID > 0)
+				{
+					ReloadSawedOffAbility = XComGameState_Ability(NewGameState.ModifyStateObject(ReloadSawedOffAbility.Class, ReloadSawedOffRef.ObjectID));
+					if(ReloadSawedOffAbility != none)
+					{
+						ReloadSawedOffAbility.iCharges += AmmoToReload;
+					}	
+				} 
+			}
+		}
+    }
+    super.OnEffectAdded(ApplyEffectParameters, kNewTargetState, NewGameState, NewEffectState);
+}
+
+static function EventListenerReturn FlechetteRoundActivatedEventListener(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
+{
+	local XComGameStateContext_Ability	AbilityContext;
+    local XComGameState_Ability			AbilityState;
+	local XComGameState_Effect			EffectState;
+	local XComGameState                 NewGameState;
+	local XComGameState_Item			WeaponState;
+
+	EffectState = XComGameState_Effect(CallbackData);
+    AbilityState = XComGameState_Ability(EventData);
+    AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
+
+    if (AbilityState == none || AbilityContext == none || EffectState == none || EffectState.ApplyEffectParameters.ItemStateObjectRef != AbilityState.SourceWeapon )
+    {
+		`LOG("We had a problem an we are exiting listener",, 'CSSmugglerSpecWOTC --------------------------------');
+        return ELR_NoInterrupt;
+    }
+
+	`LOG("Ability activated:" @ AbilityState.GetMyTemplateName(),, 'CSSmugglerSpecWOTC --------------------------------');
+
+	if (AbilityContext.InterruptionStatus == eInterruptionStatus_Interrupt)
+    {
+		`LOG("At the interruption stage",, 'CSSmugglerSpecWOTC --------------------------------');
+		Return ELR_NoInterrupt;
+    }
+
+	if (AbilityHasAmmoCost(AbilityState.GetMyTemplate()))
+	{
+		`LOG("This is not an interruption stage and the ability costs ammo.",, 'CSSmugglerSpecWOTC --------------------------------');
+
+		NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState();
+		WeaponState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', AbilityState.SourceWeapon.ObjectID));
+
+		// Restore the previous ammo type
+		`LOG("FlechetteRoundActivatedEventListener, old ammo:" @ WeaponState.LoadedAmmo.ObjectID @ "new ammo:" @ EffectState.GrantsThisTurn,, 'CSSmugglerSpecWOTC --------------------------------');
+
+		WeaponState.LoadedAmmo.ObjectID = EffectState.GrantsThisTurn;			
+
+		//`LOG("we have updated the loaded ammo to this id:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
+		`XCOMGAME.GameRuleset.SubmitGameState(NewGameState);
+	}		
+    
+
+    return ELR_NoInterrupt;
+}
+
 function int GetExtraArmorPiercing(XComGameState_Effect EffectState, XComGameState_Unit Attacker, Damageable TargetDamageable, XComGameState_Ability AbilityState, const out EffectAppliedData AppliedData)
 {
 	return 0;
@@ -36,73 +161,6 @@ function int GetExtraShredValue(XComGameState_Effect EffectState, XComGameState_
 	//else return 0;
 //}
 
-function RegisterForEvents(XComGameState_Effect EffectGameState)
-{
-    local X2EventManager EventMgr;
-    local XComGameState_Unit UnitState;
-    local Object EffectObj;
-
-    EffectObj = EffectGameState;
-    UnitState = XComGameState_Unit(`XCOMHISTORY.GetGameStateForObjectID(EffectGameState.ApplyEffectParameters.SourceStateObjectRef.ObjectID));
-
-    EventMgr = `XEVENTMGR;
-    EventMgr.RegisterForEvent(EffectObj, 'AbilityActivated', FlechetteRoundActivatedEventListener, ELD_OnStateSubmitted,, UnitState,, EffectObj);
-}
-
-static function  EventListenerReturn FlechetteRoundActivatedEventListener(Object EventData, Object EventSource, XComGameState GameState, Name EventID, Object CallbackData)
-{
-	local XComGameStateContext_Ability	AbilityContext;
-    local XComGameState_Ability			AbilityState;
-    local XComGameState_Unit			UnitState;
-	local XComGameState_Effect			EffectState;
-	local XComGameState                 NewGameState;
-	local XComGameState_Item			WeaponState;
-	local X2AbilityTemplate             AbilityTemplate;
-	local bool                          bAbilityHasAmmoCost;
-
-
-	EffectState = XComGameState_Effect(CallbackData);
-    AbilityState = XComGameState_Ability(EventData);
-    UnitState = XComGameState_Unit(EventSource);
-    AbilityContext = XComGameStateContext_Ability(GameState.GetContext());
-	WeaponState = XComGameState_Item(`XCOMHISTORY.GetGameStateForObjectID(EffectState.ApplyEffectParameters.ItemStateObjectRef.ObjectID));
-	AbilityTemplate = AbilityState.GetMyTemplate();
-
-	`LOG("Everything setup and ready to change",, 'CSSmugglerSpecWOTC --------------------------------');
-
-    if (AbilityState == none || UnitState == none || AbilityContext == none || EffectState == none || EffectState.ApplyEffectParameters.ItemStateObjectRef != AbilityState.SourceWeapon )
-    {
-		`LOG("We had a problem an we are exiting listener",, 'CSSmugglerSpecWOTC --------------------------------');
-        return ELR_NoInterrupt;
-    }
-
-	if (AbilityContext.InterruptionStatus == eInterruptionStatus_Interrupt)
-    {
-		`LOG("At the interruption stage",, 'CSSmugglerSpecWOTC --------------------------------');
-		Return ELR_NoInterrupt;
-    }
-    else
-    {
-		bAbilityHasAmmoCost = AbilityHasAmmoCost(AbilityTemplate);
-		if (bAbilityHasAmmoCost)
-		{
-
-			NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState();
-			WeaponState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', WeaponState.ObjectID));
-
-			// Restore the previous ammo type
-			`LOG("we have a weaponSttee and we are outside the interruption stage, my current loaded ammo id is:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
-
-			WeaponState.LoadedAmmo.ObjectID = EffectState.GrantsThisTurn;			
-
-			`LOG("we have updated the loaded ammo to this id:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
-			`XCOMGAME.GameRuleset.SubmitGameState(NewGameState);
-		}		
-    }
-
-    return ELR_NoInterrupt;
-}
-
 static function bool AbilityHasAmmoCost(const X2AbilityTemplate Template)
 {
     local X2AbilityCost                   Cost;
@@ -129,59 +187,3 @@ static function bool AbilityHasAmmoCost(const X2AbilityTemplate Template)
 //
     //return UV.fValue > 0;
 //}
-
-simulated protected function OnEffectAdded(const out EffectAppliedData ApplyEffectParameters, XComGameState_BaseObject kNewTargetState, XComGameState NewGameState, XComGameState_Effect NewEffectState)
-{
-    local XComGameState_Unit		UnitState;
-	local XComGameState_Item		WeaponState, AmmoState;
-	local StateObjectReference		ReloadSawedOffRef;
-	local XComGameState_Ability		ReloadSawedOffAbility;
-	local int						ClipSize;
-	local X2ItemTemplate			AmmoTemplate;
-
-	UnitState = XComGameState_Unit(kNewTargetState);
-
-    if (UnitState != none)
-    {
-		WeaponState = XComGameState_Item(`XCOMHISTORY.GetGameStateForObjectID(ApplyEffectParameters.ItemStateObjectRef.ObjectID));
-		if (WeaponState != none)
-		{
-			ClipSize = WeaponState.GetClipSize();
-			//	If weapon's Ammo is not full, then load +1 Ammo
-			if (WeaponState.Ammo < ClipSize)
-			{
-				WeaponState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', ApplyEffectParameters.ItemStateObjectRef.ObjectID));
-
-				// create the ammo
-				AmmoTemplate = class'X2ItemTemplateManager'.static.GetItemTemplateManager().FindItemTemplate('FlechetteRounds');
-				AmmoState = AmmoTemplate.CreateInstanceFromTemplate(NewGameState);
-
-				NewEffectState.GrantsThisTurn = WeaponState.LoadedAmmo.ObjectID;
-				WeaponState.LoadedAmmo = AmmoState.GetReference();
-				`LOG("we have updated the loaded ammo to this id:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
-
-				// reload ammo
-				WeaponState.Ammo += AmmoToReload;
-				if (WeaponState.Ammo > ClipSize)
-				{
-					  WeaponState.Ammo = ClipSize;
-				}
-			}
-			else
-			{	
-				//	If weapon is already at full ammo, grant +1 Charge to Reload Sawed Off ability.
-				ReloadSawedOffRef = UnitState.FindAbility('RpgSawnOffReload');
-				if(ReloadSawedOffRef.ObjectID > 0)
-				{
-					ReloadSawedOffAbility = XComGameState_Ability(NewGameState.ModifyStateObject(ReloadSawedOffAbility.Class, ReloadSawedOffRef.ObjectID));
-					if(ReloadSawedOffAbility != none)
-					{
-						ReloadSawedOffAbility.iCharges += AmmoToReload;
-					}	
-				} 
-			}
-			
-		}
-    }
-    super.OnEffectAdded(ApplyEffectParameters, kNewTargetState, NewGameState, NewEffectState);
-}

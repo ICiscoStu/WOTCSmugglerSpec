@@ -681,49 +681,67 @@ static function X2AbilityTemplate Create_KnockDown_Passive()
 	return Template;
 }
 
-static function X2AbilityTemplate Create_Flechette_Round(name TemplateName = 'CS_Flechette_Round')
+static function X2AbilityTemplate Create_Flechette_Round()
 {
 	local X2AbilityTemplate                 Template;	
 	local X2AbilityCost_ActionPoints        ActionPointCost;
 	local X2AbilityCharges					Charges;
 	local X2AbilityCost_Charges				ChargeCost;
-	local X2Condition_UnitProperty          ShooterPropertyCondition;
-	local X2AbilityTrigger_PlayerInput      InputTrigger;
 	local X2Effect_Flechette_Round 	        PersistentEffect;
 
 	`CREATE_X2ABILITY_TEMPLATE(Template, 'CS_Flechette_Round');	
 
+	//	Icon Setup
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_reload";
 	Template.bDontDisplayInAbilitySummary = false;
+	Template.AbilitySourceName = 'eAbilitySource_Perk';
+	Template.eAbilityIconBehaviorHUD = eAbilityIconBehavior_AlwaysShow;
+	Template.ShotHUDPriority = class'UIUtilities_Tactical'.const.CLASS_COLONEL_PRIORITY;	//	TODO: Set correct ShotHudPriority here
 
+	//	Targeting and Triggering
+	Template.AbilityToHitCalc = default.DeadEye;
+	Template.AbilityTargetStyle = default.SelfTarget;
+	Template.AbilityTriggers.AddItem(default.PlayerInputTrigger);
+
+	//	Ability Costs
+	//	Doesn't cost an action to use, but requires the unit to *have* an action point.
 	ActionPointCost = new class'X2AbilityCost_ActionPoints';
+	ActionPointCost.iNumPoints = 1;
+	ActionPointCost.bFreeCost = true;
 	Template.AbilityCosts.AddItem(ActionPointCost);
 
 	Charges = new class 'X2AbilityCharges';
-	Charges.InitialCharges = 3; // TODO; get the proper X charges ??
+	Charges.InitialCharges = 3; // TODO; get the proper X charges ?? --Wait on design, perhaps make this ability cooldown-based instead.
 	Template.AbilityCharges = Charges;
 
 	ChargeCost = new class'X2AbilityCost_Charges';
 	ChargeCost.NumCharges = 1;
 	Template.AbilityCosts.AddItem(ChargeCost);
 
-	ShooterPropertyCondition = new class'X2Condition_UnitProperty';	
-	ShooterPropertyCondition.ExcludeDead = true;
-	Template.AbilityShooterConditions.AddItem(ShooterPropertyCondition);
+	//	Shooter Conditions
+	Template.AbilityShooterConditions.AddItem(default.LivingShooterProperty);
+	Template.AddShooterEffectExclusions();
 
-	InputTrigger = new class'X2AbilityTrigger_PlayerInput';
-	Template.AbilityTriggers.AddItem(InputTrigger);
+	//	TODO: Add UnitEffects condition that would prevent this ability from being available if the shooter already has the CS_FlechetteRound_Effect effect on them.
 
-	Template.AbilityToHitCalc = default.DeadEye;
-	Template.AbilityTargetStyle = default.SelfTarget;
-	
-	Template.AbilitySourceName = 'eAbilitySource_Perk';
-
+	//	Ability Effects
 	PersistentEffect = new class'X2Effect_Flechette_Round';
 	PersistentEffect.AmmoToReload = 1;
+	PersistentEffect.BuildPersistentEffect(1, true);
+	PersistentEffect.SetDisplayInfo(ePerkBuff_Bonus, Template.LocFriendlyName, Template.LocLongDescription, Template.IconImage, true, /*status icon*/, Template.AbilitySourceName);
+	PersistentEffect.EffectName = 'CS_FlechetteRound_Effect';
+	PersistentEffect.DuplicateResponse = eDupe_Ignore;	//	Safeguard - cannot apply this effect to the unit more than once.
 	Template.AddTargetEffect(PersistentEffect);
-
+	
+	//	State and Viz
+	Template.AbilityConfirmSound = "TacticalUI_Activate_Ability_Run_N_Gun";
+	Template.bSkipFireAction = true;
+	//Template.CustomFireAnim = 'HL_ReloadA';
 	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
+	Template.BuildVisualizationFn = TypicalAbility_BuildVisualization;
+	//	Non-offensive ability, cannot be interrupted.
+	Template.Hostility = eHostility_Neutral;
+	Template.BuildInterruptGameStateFn = none;
 
 	return Template;
 }
