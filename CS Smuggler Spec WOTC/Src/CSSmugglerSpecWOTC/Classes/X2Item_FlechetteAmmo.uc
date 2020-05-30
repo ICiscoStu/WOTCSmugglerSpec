@@ -20,8 +20,6 @@ static function X2AmmoTemplate CreateFlechetteRounds()
 	Template.TradingPostValue = 0;
 	Template.PointsToComplete = 0;
 
-	//	Unnecessary and probably wouldn't work even if 'FlechetteRounds' ability existed, which it doesn't.
-	//Template.Abilities.AddItem('FlechetteRounds');
 	Template.Tier = 1;
 
 	//	Placeholder stuff just for test

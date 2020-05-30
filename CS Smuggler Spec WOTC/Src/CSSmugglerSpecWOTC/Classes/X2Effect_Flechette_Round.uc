@@ -12,7 +12,7 @@ function RegisterForEvents(XComGameState_Effect EffectGameState)
     UnitState = XComGameState_Unit(`XCOMHISTORY.GetGameStateForObjectID(EffectGameState.ApplyEffectParameters.SourceStateObjectRef.ObjectID));
 
     EventMgr = `XEVENTMGR;
-    EventMgr.RegisterForEvent(EffectObj, 'AbilityActivated', FlechetteRoundActivatedEventListener, ELD_OnStateSubmitted,, UnitState,, EffectObj);
+    EventMgr.RegisterForEvent(EffectObj, 'AbilityActivated', FlechetteRoundActivatedEventListener, ELD_OnStateSubmitted ,, UnitState,, EffectObj); // TODO IRI; find a better way to unload the ammo without using the visualization deferral
 }
 
 simulated protected function OnEffectAdded(const out EffectAppliedData ApplyEffectParameters, XComGameState_BaseObject kNewTargetState, XComGameState NewGameState, XComGameState_Effect NewEffectState)
@@ -95,31 +95,32 @@ static function EventListenerReturn FlechetteRoundActivatedEventListener(Object 
 
     if (AbilityState == none || AbilityContext == none || EffectState == none || EffectState.ApplyEffectParameters.ItemStateObjectRef != AbilityState.SourceWeapon )
     {
-		`LOG("We had a problem an we are exiting listener",, 'CSSmugglerSpecWOTC --------------------------------');
+		`LOG("We had a problem an we are exiting listener",, 'CSSmugglerSpecWOTC');
         return ELR_NoInterrupt;
     }
 
-	`LOG("Ability activated:" @ AbilityState.GetMyTemplateName(),, 'CSSmugglerSpecWOTC --------------------------------');
+	`LOG("Ability activated:" @ AbilityState.GetMyTemplateName(),, 'CSSmugglerSpecWOTC');
 
 	if (AbilityContext.InterruptionStatus == eInterruptionStatus_Interrupt)
     {
-		`LOG("At the interruption stage",, 'CSSmugglerSpecWOTC --------------------------------');
+		`LOG("At the interruption stage",, 'CSSmugglerSpecWOTC');
 		Return ELR_NoInterrupt;
     }
 
 	if (AbilityHasAmmoCost(AbilityState.GetMyTemplate()))
 	{
-		`LOG("This is not an interruption stage and the ability costs ammo.",, 'CSSmugglerSpecWOTC --------------------------------');
+		`LOG("This is not an interruption stage and the ability costs ammo.",, 'CSSmugglerSpecWOTC');
 
 		NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState();
 		WeaponState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', AbilityState.SourceWeapon.ObjectID));
 
 		// Restore the previous ammo type
-		`LOG("FlechetteRoundActivatedEventListener, old ammo:" @ WeaponState.LoadedAmmo.ObjectID @ "new ammo:" @ EffectState.GrantsThisTurn,, 'CSSmugglerSpecWOTC --------------------------------');
+		`LOG("FlechetteRoundActivatedEventListener, old ammo:" @ WeaponState.LoadedAmmo.ObjectID @ "new ammo:" @ EffectState.GrantsThisTurn,, 'CSSmugglerSpecWOTC');
 
-		WeaponState.LoadedAmmo.ObjectID = EffectState.GrantsThisTurn;			
+		WeaponState.LoadedAmmo.ObjectID = EffectState.GrantsThisTurn;
+		EffectState.RemoveEffect(NewGameState, NewGameState, true);		
 
-		//`LOG("we have updated the loaded ammo to this id:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC --------------------------------');
+		`LOG("we have updated the loaded ammo to this id:" @ WeaponState.LoadedAmmo.ObjectID,, 'CSSmugglerSpecWOTC');
 		`XCOMGAME.GameRuleset.SubmitGameState(NewGameState);
 	}		
     
